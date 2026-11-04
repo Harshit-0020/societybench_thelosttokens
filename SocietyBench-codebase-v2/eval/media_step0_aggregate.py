@@ -182,3 +182,22 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+"""
+WORK DONE IN MEDIA PIPELINE:
+TODO: check meta languages present in the data scraped - media_step2_clean.py
+
+TRANSLATIONS MADE TO FLAGS:
+摘要生成失败 : Summary generation failed
+不相关 : Irrelevant
+清洗失败 : Cleaning failed
+无新进展 : No new developments
+假新进展 : Fake new developments
+提取失败 : Extraction failed
+未分阶段 : Unstaged
+社媒数据 : Social media data
+
+
+Deduplication format - Keep: x,x,x
+
+"""
