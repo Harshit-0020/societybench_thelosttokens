@@ -2,7 +2,7 @@
 """web-step1-summarize (1:1 of skills/web-step1-summarize/SKILL.md).
 
 LLM-driven. Reads articles JSON (array of {url, title, text/text_preview, date, ...})
-and for each article asks the LLM to produce a 300-400-char Chinese factual
+and for each article asks the LLM to produce a 300-400-char English factual
 summary. Articles judged irrelevant to the supplied event are flagged so
 downstream steps can drop them.
 
@@ -33,18 +33,18 @@ from common import call_llm, load_json, load_pipeline_config, parse_date_str, wr
 
 
 PROMPT = """\
-请根据以下新闻内容，直接描述发生了什么事情，约 300-400 字。
+Please based on the following news content, describe directly what happened in approximately 300-400 characters.
 
-要求：
-- 直接叙述事件经过，像写新闻稿一样
-- 禁止出现"摘要""本文""该文章""这篇报道""与事件无关"等元语言
-- 禁止出现"以下是摘要""总结如下"等开头
-- 如果内容跟「{event}」无关，只回复三个字：不相关
-- 直接从事件内容开始写，不要任何前缀
+Requirements:
+- Describe the sequence of events directly, as if writing a news report
+- Do not use metalinguistic expressions such as "Summary," "this text," "the article," "this report," or "Irrelevant to the event."
+- Do not begin with phrases like "The following is a summary", "The summary is as follows", etc.
+- If the content is Irrelevant to "{event}", only reply with one word: Irrelevant
+- Start writing directly from the event content, without any prefixes
 
-标题：{title}
+Title：{title}
 
-正文：
+Text：
 {text}
 """
 
@@ -83,7 +83,7 @@ def load_existing(out_path: Path) -> Dict[str, Dict[str, Any]]:
 
 
 def summarize_text(title: str, text: str, event_name: str, model: str) -> str:
-    prompt = PROMPT.format(event=event_name, title=title[:200] or "无标题", text=text[:3000])
+    prompt = PROMPT.format(event=event_name, title=title[:200] or "Untitled", text=text[:3000])
     try:
         raw = call_llm(
             [{"role": "user", "content": prompt}],
@@ -114,7 +114,7 @@ def process_one(
     # SKILL §"keep original on failure" + §output format: normalize error sentinel to the
     # SKILL-defined string so downstream string-match filters work.
     if summary.startswith("[summarize_error]"):
-        summary = "摘要生成失败"
+        summary = "Summary generation failed"
     result = {
         "id": article_id,
         "url": article.get("url"),
@@ -186,8 +186,8 @@ def main() -> None:
 
     # Final stats — use SKILL string contract: summary == "不相关" → irrelevant
     final = load_existing(out_path)
-    irrelevant = sum(1 for r in final.values() if str(r.get("summary", "")).strip() == "不相关")
-    failed = sum(1 for r in final.values() if str(r.get("summary", "")).strip() == "摘要生成失败")
+    irrelevant = sum(1 for r in final.values() if str(r.get("summary", "")).strip() == "Irrelevant")
+    failed = sum(1 for r in final.values() if str(r.get("summary", "")).strip() == "Summary generation failed")
     rel = len(final) - irrelevant - failed
     # SKILL §"append progress after each step" — explicit status file for human/audit
     write_progress(out_path.with_name(out_path.stem + "_progress.json"),

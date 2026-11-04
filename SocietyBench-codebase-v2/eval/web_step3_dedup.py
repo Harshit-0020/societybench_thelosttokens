@@ -6,7 +6,7 @@ which ones have unique new info (filtering same-day repeats of older news).
 Dates with ≤1 entry are kept as-is. Irrelevant entries are dropped first.
 
 Per the SKILL: 4 threads, resume per-date, reasoning_effort="none".
-The LLM answers in `保留:n1,n2,n3` form (numeric indices into the group).
+The LLM answers in `Keep:n1,n2,n3` form (numeric indices into the group).
 """
 from __future__ import annotations
 
@@ -24,14 +24,14 @@ from common import call_llm, load_pipeline_config, read_jsonl, write_progress
 
 
 PROMPT = """\
-以下是 {date} 这一天关于「{event}」的 {n} 条报道摘要。
+Below are {n} summaries of news reports about “{event}” from {date}.
 
-很多报道在重复讲述过去已经发生的事。请你：
+Many news reports keep repeating events that have already happened in the past. Please:
 
-1. 找出哪些报道包含了**这一天的新进展、新信息、新观点**（而不只是重复旧事）
-2. 返回应该保留的编号，格式：保留：1,3,5
-3. 如果全都是重复旧事没有新信息，选最完整的 1-2 条，格式：保留：1
-4. 只返回"保留：x,x,x"这一行，不要其他内容
+1. Find out which reports contain **new developments, new information, or new perspectives of that day** (not just repeating old things)
+2. Return the numbers that should be kept in this format: Keep: 1,3,5
+3. If all the items repeat old information with nothing new, select the 1-2 most complete ones, format: Keep: 1
+4. Only return the line 'Keep: x,x,x', nothing else
 
 {items_text}
 """
@@ -88,7 +88,7 @@ def dedup_group(date: str, articles: List[Dict[str, Any]],
     except Exception:
         return articles[:2]
     for line in raw.strip().splitlines():
-        if "保留" in line:
+        if "Keep" in line:
             tail = re.split(r"[：:]", line, maxsplit=1)
             if len(tail) < 2:
                 continue
@@ -121,7 +121,7 @@ def process_date(
         counter["done"] += 1
         done = counter["done"]
     pct = done / total_dates * 100 if total_dates else 0
-    log(f"[{done}/{total_dates}] ({pct:.1f}%) {date}: {len(articles)}篇 → {len(kept)}篇", log_path)
+    log(f"[{done}/{total_dates}] ({pct:.1f}%) {date}: {len(articles)} articles → {len(kept)} articles", log_path)
 
 
 def main() -> None:
@@ -146,7 +146,7 @@ def main() -> None:
             continue
         seen_url.add(url)
         summary = (r.get("summary") or "").strip()
-        if summary in ("不相关", "与事件无关", "摘要生成失败", ""):
+        if summary in ("Irrelevant", "Irrelevant to the event", "Summary generation failed", ""):
             continue
         relevant.append(r)
 
