@@ -35,7 +35,7 @@ PROMPT = """\
 Please review the following message, which has been marked as “New Developments,” a second time:
 
 - Is it really something new that happened around {date} (not a review, not a comment, not an emotion, not background information)?
-- If there are any genuine new developments, concisely summarize the key points in 1-2 sentences, approximately 50-100 words.
+- If there are any genuine new developments, concisely summarize the key points in 1-2 sentences, approximately 50-100 characters.
 - If it is actually an old thing / comment / emotion / Irrelevant to the event, just output: Fake new developments
 
 Output only the concise version or "Fake new developments" with no additional explanation.
