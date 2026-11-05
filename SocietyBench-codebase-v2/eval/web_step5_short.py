@@ -8,7 +8,7 @@ default_llm_model — open-source users plug in their own.
 
 Pipeline:
   1. Filter step4 rows by `new_info` noise patterns (pure-Python pre-filter)
-  2. For each candidate, ask the LLM to re-judge "假新进展" (fake new progress)
+  2. For each candidate, ask the LLM to re-judge "Fake new developments" (fake new progress)
      and compress to 1-2 sentences (~50-100 chars) per SKILL §"execution step 2.
      per-item review" + §"3"
   3. Group survivors by Stage (if --stages provided) and date, write
@@ -29,18 +29,18 @@ from typing import Any, Dict, List, Optional
 from common import call_llm, load_pipeline_config, parse_date_obj, read_jsonl
 
 
-NOISE_PATTERNS = [r"^无新进展$", r"^提取失败", r"^\[.*error", r"^N/A$"]
+NOISE_PATTERNS = [r"^No new developments$", r"^Extraction failed", r"^\[.*error", r"^N/A$"]
 
 PROMPT = """\
-请二次判断下面这条已被标为"有新进展"的信息，并按需精炼：
+Please review the following message, which has been marked as “New Developments,” a second time:
 
-- 是不是真的有 {date} 前后新发生的事情（不是回顾、不是评论、不是情绪、不是事件背景）？
-- 如果真有，用 1-2 句话精炼写出新进展核心，约 50-100 字
-- 如果其实是旧事 / 评论 / 情绪 / 与事件无关，只输出：假新进展
+- Is it really something new that happened around {date} (not a review, not a comment, not an emotion, not background information)?
+- If there are any genuine new developments, concisely summarize the key points in 1-2 sentences, approximately 50-100 characters.
+- If it is actually an old thing / comment / emotion / Irrelevant to the event, just output: Fake new developments
 
-只输出精炼版或"假新进展"，不要任何额外说明。
+Output only the concise version or "Fake new developments" with no additional explanation.
 
-发布日期：{date}
+Release date：{date}
 new_info：{new_info}
 """
 
@@ -61,7 +61,7 @@ def is_noise(s: str) -> bool:
     s = (s or "").strip()
     if not s:
         return True
-    if "无新进展" in s or "提取失败" in s:
+    if "No new developments" in s or "Extraction failed" in s:
         return True
     return any(re.search(p, s, flags=re.I) for p in NOISE_PATTERNS)
 
@@ -76,13 +76,13 @@ def load_stages(path: Optional[Path]) -> List[Dict[str, str]]:
 def stage_for(date_str: str, stages: List[Dict[str, str]]) -> str:
     d = parse_date_obj(date_str)
     if d is None or not stages:
-        return "未分阶段"
+        return "Unstaged"
     for s in stages:
         start = parse_date_obj(s.get("start"))
         end = parse_date_obj(s.get("end"))
         if start and end and start <= d <= end:
-            return s.get("name") or "未命名"
-    return "未分阶段"
+            return s.get("name") or "Untitled"
+    return "Unstaged"
 
 
 def shrink_one(date: str, new_info: str, model: str) -> str:
@@ -134,7 +134,7 @@ def main() -> None:
             counter["done"] += 1
             done = counter["done"]
         log(f"[{done}/{total}] {r.get('date','')} | {r.get('title','')[:40]}", log_path)
-        if "假新进展" in short[:6]:
+        if "Fake new developments" in short[:6]:
             return
         with kept_lock:
             kept.append({**r, "short": short})
@@ -151,14 +151,14 @@ def main() -> None:
     kept.sort(key=lambda x: (x.get("date") or ""))
     groups: Dict[str, Dict[str, List[Dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
     for r in kept:
-        stage = stage_for(r.get("date", ""), stages) if stages else "全部进展"
+        stage = stage_for(r.get("date", ""), stages) if stages else "All progress"
         groups[stage][r.get("date", "")].append(r)
 
     title_prefix = (args.event_name + " — ") if args.event_name else ""
-    md_lines = [f"# {title_prefix}Timeline（短版）", ""]
+    md_lines = [f"# {title_prefix}Timeline（Short Version）", ""]
     stage_order = [s.get("name") for s in stages] if stages else list(groups.keys())
     seen = set()
-    for stage in list(stage_order) + ["未分阶段"]:
+    for stage in list(stage_order) + ["Unstaged"]:
         if stage in seen or stage not in groups:
             continue
         seen.add(stage)
