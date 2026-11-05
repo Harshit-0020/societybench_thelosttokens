@@ -290,7 +290,7 @@ def render_md(scorecard: Dict[str, Any]) -> str:
     lines.append(f"- workspace: `{scorecard['workspace']}`")
     lines.append(f"- run: `{scorecard['run_dir']}`")
     lines.append("")
-    lines.append("## 总览（pooled across all selected points）\n")
+    lines.append("## Overview（pooled across all selected points）\n")
     lines.append("| Model | 3B (S_cal) | 3B wMAE | n_3B | 3F (S_time) | 3F wMAE_days | baseline | n_3F |")
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
     for row in scorecard["entries"]:
@@ -313,11 +313,18 @@ def render_md(scorecard: Dict[str, Any]) -> str:
         for i, r in enumerate(eligible):
             badge = medals[i] if i < len(medals) else "  "
             lines.append(f"- {badge} **{r['model']}** — {r[key]['score_100']:.2f}")
-
-    _rank("cal", "3B 榜 (Brier 概率校准)")
-    _rank("time", "3F 榜 (时间精度)")
+    # 概率校准 --> Probability calibration
+    # 榜 --> List
+    _rank("cal", "3B List (Brier Probability calibration)")
+    
+    # 时间精度 --> Time accuracy
+    _rank("time", "3F List (Time accuracy)")
     lines.append("")
-    lines.append("> 注：3B / 3F 都是跨预测点 **pooled** 后的最终分数（非 per-point 平均），且不输出综合排名。")
+    # 都是跨预测点 --> They are all cross-prediction points.
+    # 后的最终分数 --> After the final score
+    # 非 --> Non, 平均 --> Average
+    # 且不输出综合排名。--> And do not output the overall ranking.
+    lines.append("> Note: 3B / 3F They are all cross-prediction points. **pooled** After the final score（Non per-point Average），And do not output the overall ranking.")
     return "\n".join(lines) + "\n"
 
 

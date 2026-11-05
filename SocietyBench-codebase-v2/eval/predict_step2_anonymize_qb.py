@@ -78,30 +78,30 @@ def anon_obj(obj: Any, repl) -> Any:
     return obj
 
 
-VERIFY_PROMPT = """你是**极其严格**的匿名化泄露审计员。下面是一份**已匿名化**的文本（真实实体本应已被
-替换为占位符，如 公司A/机构B/国家X/人物A/城市A）。任务：**揪出任何仍可能让读者定位到
-真实事件 / 真实当事方的"残留可识别信息"**。标准全称往往已被匿掉，**漏网的几乎都是下面这些
-长尾形态——请逐条仔细推理排查**：
+VERIFY_PROMPT = """You are an **extremely strict**anonymous leak auditor.The following is a copy of **anonymous** text (the real entity should have been
+Replace with placeholders, such as company A/organization B/country X/person A/city A).Task: **Find out anything that may still allow readers to locate
+"Residual identifiable information" of real events / real parties**.The full name of the standard has often been hidden, and almost all the ones that leak the net are the following
+Long tail form-please reason carefully one by one**：
 
-1. **复合 / 派生 / 简称**：某实体匿了，但它的复合或派生写法没匿。例：「美国」匿了却漏
-   「美帝 / 反美 / 美式 / 亲美 / 中美 / 中美沙」；「日本」匿了却漏「日媒 / 日方」。
-2. **谐音 / 别名 / 旧名**：正名匿了，谐音或别称没匿（例：「超微」匿了却漏其谐音「超威」）。
-3. **缩写 / 梗 / 字母游戏**：能拼出真实名称或股票代码的缩写、玩笑式全称（例：把代码 SMCI
-   展开成「So Much Criminal Investigation」「Super Money Come In」）、圈内黑话。
-4. **音译 / 罗马名**：看起来像真实人名的拼音 / 英文名。
-5. **具体型号 / 专名**：具体武器 / 产品 / 型号 / 机构 / 媒体 / 公司 / 律所名（如 055型驱逐舰、
-   B-52、某券商、某电视台），**哪怕只出现一两次**。
-6. **描述性指认**：名字虽匿，但**描述性属性**能唯一锁定真实主体（例：「全球第五大、拥有
-   11.5万名员工的会计师事务所」→ 可锁定特定公司）。
-7. **文化 / 国别影射**：用文化符号影射真实国家 / 民族（例：恒河→某国、六芒星→某国、波斯→某国）。
+1. **Compound / derived / abbreviation **: An entity is hidden, but its compound or derived writing method is not hidden.Example: "United States" is hidden but leaked
+   "U.S. Emperor / anti-U.S. / American / pro-U.S. / Sino-U.S. / Sino-U.S. Sand"; "Japan" was hidden but "Japanese media / Japanese Side" was omitted.
+2. **Homonym / alias / old name **: The proper name is hidden, and the homonym or alias is not hidden (example: "Ultra-micro" is hidden but its homonym "Chaowei" is missing).
+3. **Abbreviation / stem / alphabet game**: Can spell out the abbreviation of the real name or stock code, the full name of the joke (example: Put the code SMCI
+   Expanded into "So Much Criminal Investigation" and "Super Money Come In"), slang in the circle.
+4. **Transliteration / Roman name **: Pinyin / English name that looks like a real person's name.
+5. **Specific model / proper name**: Specific weapon / product / model / organization / media / company / law firm name (such as Type 055 destroyer、
+   B-52, a brokerage firm, a TV station),**even if it only appears once or twice**.
+6. **Descriptive identification**: Although the name is hidden, the **descriptive attribute** can uniquely lock the real subject (example: "The world's fifth largest, owns
+   An accounting firm with 115,000 employees"→ can target specific companies).
+7. **Cultural / country innuendo**: Use cultural symbols to allude to the real country / nation (for example: Ganges → a certain country, Six-pointed star → a certain country, Persia→ a certain country).
 
-🔒 **不算残留**：纯数字 / 金额 / 百分比 / 日期；形如「公司A / 机构B / 国家X / 人物A」的占位符
-本身；泛指常见词（政府 / 法院 / 分析师 / 总统 这类不指向某个具体真实主体的）。
+🔒** Does not count as residual **: pure number / amount / percentage / date; placeholder shaped like "Company A / organization B / country X / Person A"
+Itself; generally refers to common words (such as government / court / analyst / president, which do not point to a specific real subject).
 
-请**先逐个候选在心里推理**「它是否真能让人定位到现实中的特定主体」，再**只输出 JSON**（无多余文字）：
-{{"clean": <true|false>, "residual_real_names": ["残留串", ...], "note": "一句话"}}
+Please**First reason in your heart one by one** "Does it really allow people to locate a specific subject in reality", and then**Only output JSON** (no extra text)：
+{{"clean": <true|false>, "residual_real_names": ["residual string",...], "note": "One sentence"}}
 
-待审计文本：
+Text to be audited：
 {sample}
 """
 
@@ -326,8 +326,9 @@ def main() -> None:
             kept_rules.append(r)                  # bank-only real name -> anonymize as usual (prevent leaks)
     if dropped or normalized:
         replacements = kept_rules + normalized
-        print(f"[GT-保留守卫] 丢锚 {len(dropped)} 条 + 兄弟写法归一 {len(normalized)} 条"
-              f"(题库匿名边界对齐 GT)。丢:{[_o(r) for r in dropped][:6]} 归一:{[(r[0], r[1]) for r in normalized][:6]}")
+        # 保留守卫] 丢锚 --> Retain guard] Drop anchor
+        print(f"[GT-Retain guard] Drop anchor {len(dropped)} Article + Brother writing method is normalized {len(normalized)} Strip"
+              f"(Question bank anonymous boundary alignment GT).lost: {[_o(r) for r in dropped][:6]} Normalize: {[(r[0], r[1]) for r in normalized][:6]}")
 
     repl = build_replacer(replacements)
     qbs = sorted(qb_dir.glob("P*.json"))
@@ -337,15 +338,16 @@ def main() -> None:
     raw_dir = ws / "questionbank_raw"
     if not raw_dir.exists():
         shutil.copytree(qb_dir, raw_dir)
-        print(f"[backup] 原始题库 → {raw_dir}")
+        # 原始题库 --> Original question bank
+        print(f"[backup] Original question bank → {raw_dir}")
     else:
         for f in raw_dir.glob("P*.json"):
             shutil.copy2(f, qb_dir / f.name)
-        print("[restore] 从 questionbank_raw 还原题库(重洗起点干净、自愈过度匿名)")
+        print("[restore] From questionbank_raw Restore the question bank (clean starting point after a full reset, self-healing, excessive anonymity)")
 
     # 2) Initial deterministic anonymization (apply the existing table -> same placeholders as GT)
     n0 = apply_table(qbs, repl)
-    print(f"[anon] 初次确定性匿名：{len(qbs)} 题库，{n0} 个有真名被替换")
+    print(f"[anon] Anonymous for the first time：{len(qbs)} Question bank，{n0} A real name is replaced")
 
     # 3) Closed-loop repair: **full-coverage** LLM detection of residuals (new real names the
     #    question LLM injected from knowledge, absent from the table) -> derive placeholders ->
@@ -356,17 +358,17 @@ def main() -> None:
         for rnd in range(1, a.max_fix_rounds + 1):
             resid = run_verify(qbs, a.verify_model, reasoning_effort=a.reasoning_effort)  # all stems, deduped + chunked, no sampling
             report["rounds"].append({"round": rnd, "residual_candidates": resid})
-            print(f"[round {rnd}] 全覆盖检出残留候选 {len(resid)}: {resid[:15]}")
+            print(f"[round {rnd}] Comprehensive detection of residual candidates {len(resid)}: {resid[:15]}")
             if not resid:
-                print("  ✅ 无残留，收敛"); break
+                print("  ✅ No residue, convergence"); break
             have = {x[0] for x in replacements if isinstance(x, (list, tuple)) and len(x) >= 1}
             new_rules = derive_replacement_rules(
                 "", [{"snippet": n} for n in resid],
                 model=a.verify_model, existing_rules=replacements)
             new_rules = [r for r in new_rules if r and r[0] not in have and not _gt_kept(r[0])]
             if not new_rules:
-                print("  无可派生新规则（残留多为误报/公共实体），停"); break
-            print(f"  derive 生成 {len(new_rules)} 条新规则: {new_rules[:8]}")
+                print("  No new rules can be derived (the remaining items are mostly false positives or public entities). Stop."); break
+            print(f"  derive generate {len(new_rules)} New rules: {new_rules[:8]}")
             replacements = replacements + new_rules
             added += new_rules
             repl = build_replacer(replacements)
@@ -382,7 +384,7 @@ def main() -> None:
     #    in-table real names (LHS); should be 0 = table fully applied
     det = deterministic_check(qbs, replacements)
     report["deterministic_residual"] = det
-    print(f"[确定性检查] 表内真名残留: {det if det else '✅ 0 (替换表已彻底应用)'}")
+    print(f"[Certainty check] The real name remains in the table: {det if det else '✅ 0 (The replacement table has been fully applied.)'}")
 
     # 5) Off-topic question gate: question placeholders must be a subset of GT placeholders
     #    (per the mapping produced by GT anonymization). Entities injected by the question LLM
@@ -391,7 +393,7 @@ def main() -> None:
     gt_ph = gt_placeholder_set(gt_text, ph_re)
     prune = prune_orphan_questions(qbs, gt_ph, ph_re)
     report["orphan_prune"] = prune
-    print(f"[离题题门禁] 剔除引用 GT 不存在实体的题 {prune['removed']}，保留 {prune['kept']}")
+    print(f"[Off-topic question gate] Remove questions that reference entities not found in GT {prune['removed']}，keep {prune['kept']}")
 
     report["added_rules"] = added
     (qb_dir / "qb_anon_report.json").write_text(

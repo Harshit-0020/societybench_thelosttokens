@@ -37,33 +37,33 @@ from common import call_llm, load_pipeline_config, parse_date_obj, read_jsonl
 
 
 PROMPT_FACT = """\
-请把下面这条"短版"扩写成 200-300 字的事件叙述：
+Expand the following "short version" into a 200–300-character event narrative:
 
-- 像新闻稿，包含具体时间、人物、机构、行为、结果
-- **只写该日期的新进展**，不回顾旧事
-- 禁止"摘要""本文""该报道""该帖子"等元语言
-- **信息只能来自给定的原始摘要**，绝不凭记忆或推断补充
-- 如果原始摘要内容不够撑起 200 字，宁可少于 200 字也不要编造
+- Write in a news-report style, including specific time, people, organizations, actions, and outcomes.
+- **Include only new developments on the given date**; do not recount previous events.
+- Do not use meta-language such as "Summary", "this article", "this report", or "this post".
+- **Use information exclusively from the provided original summaries**. Never add information from memory or inference.
+- If the original summaries do not contain enough information to support 200 characters, produce a shorter narrative rather than inventing facts.
 
-只输出扩写后的中文段落，不要任何额外说明。
+Output only the expanded Chinese paragraph, without any additional explanation.
 
-短版要点：{short}
+Short version key points: {short}
 
-原始摘要（可能多条，请综合）：
+Original summaries (possibly multiple; synthesize them):
 {src}
 """
 
 PROMPT_OPINION = """\
-请基于下面 {date} 当天的多条社媒舆论摘要，写一段 100-200 字的公众反应概括：
+Please write a 100-200-word summary of public reaction based on the summary of multiple social media public opinion on the day {date} below：
 
-- 主流观点（支持谁、反对谁、为什么）
-- 情绪倾向（愤怒/同情/讽刺/疲惫等）
-- 争议焦点（具体在争什么）
-- 典型言论/梗
+- Mainstream views (who supports, who opposes, and why)
+- Emotional tone (anger, sympathy, sarcasm, fatigue, etc.)
+- The focus of the dispute (what exactly is the dispute about)
+- Typical remarks/memes
 
-只写舆论本身，不要复述事件经过。只输出综合后的中文段落，不要任何额外说明。
+Only write about public opinion itself, and don’t recount what happened. Only output the comprehensive Chinese paragraphs, without any additional instructions.
 
-================ 舆论摘要 ================
+================ Public Opinion Summary================
 {posts}
 ================
 """
