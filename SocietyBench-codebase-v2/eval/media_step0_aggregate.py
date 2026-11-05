@@ -88,7 +88,7 @@ def aggregate(
             txt = (c.get("content") or "").strip()
             if not txt:
                 continue
-            top_comment_strs.append(f"[赞{c.get('liked_count', 0)}] {txt}")
+            top_comment_strs.append(f"Likes {c.get('liked_count', 0)}] {txt}")
         aggregated.append({
             "id": f"{post.get('platform','')}_{pid}",
             "platform": post.get("platform"),
@@ -196,6 +196,8 @@ TRANSLATIONS MADE TO FLAGS:
 提取失败 : Extraction failed
 未分阶段 : Unstaged
 社媒数据 : Social media data
+人工审核通过，可进入 predict : Human review approved, proceed to predict
+人工审核通过 : Human review approved
 
 
 Deduplication format - Keep: x,x,x

@@ -159,7 +159,7 @@ def main() -> None:
                     continue
                 row = json.loads(line)
                 ni = row.get("new_info", "")
-                if "无新进展" in ni or ni.startswith("[extract_error]"):
+                if "No new developments" in ni or ni.startswith("[extract_error]"):
                     old_count += 1
                 else:
                     new_count += 1

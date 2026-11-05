@@ -100,7 +100,7 @@ def build_prompt(post: Dict[str, Any], event_name: str) -> str:
         elif isinstance(c, dict):
             txt = (c.get("content") or "").strip()
             if txt:
-                norm_comments.append(f"[赞{c.get('liked_count', 0)}] {txt}")
+                norm_comments.append(f"Likes {c.get('liked_count', 0)}] {txt}")
     comments_block = ("\n\nPopular comments:\n" + "\n".join(norm_comments)) if norm_comments else ""
 
     return PROMPT.format(event=event_name, post_block=post_block, comments_block=comments_block)
