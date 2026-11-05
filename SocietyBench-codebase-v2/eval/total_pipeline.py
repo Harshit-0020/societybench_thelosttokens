@@ -42,12 +42,12 @@ def _append_worklog(worklog: Optional[Path], phase: str, status: str,
         return
     parts = [
         f"\n### [{phase}] {_now()}",
-        f"- 状态：{status}",
+        f"- Status：{status}",
     ]
     if elapsed_s is not None:
-        parts.append(f"- 耗时：{int(elapsed_s)}s")
+        parts.append(f"- Duration：{int(elapsed_s)}s")
     if note:
-        parts.append(f"- 备注：{note}")
+        parts.append(f"- Note：{note}")
     parts.append("")
     try:
         with worklog.open("a", encoding="utf-8") as fh:
@@ -85,9 +85,10 @@ def run(name: str, cmd: List[str], worklog: Optional[Path] = None,
             idle = time.time() - last_output_t
             if idle > selfcheck_seconds and not warned:
                 warned = True
-                msg = (f"\n⚠️  [{name}] 自检：>{selfcheck_seconds}s 无新输出。"
-                       "继续等待 — 这可能是 LLM reasoning / Apify run / 大批量 IO 的正常慢，"
-                       "也可能是单 batch 卡死。父进程不会强制中断；如需停止请 Ctrl+C。\n")
+                msg = (f"\n⚠️  [{name}] Self-check: No new output for >{selfcheck_seconds}s."
+                       "Keep waiting — this may be normal slowness caused by LLM reasoning, "
+                       "an Apify run, or heavy I/O, but it could also indicate that a batch is stuck. "
+                       "The parent process will not force termination; press Ctrl+C if you want to stop.\n")
                 print(msg, flush=True)
                 _append_worklog(worklog, name + "/self-check",
                                "STALL", f"no new output for {int(idle)}s")
@@ -273,7 +274,7 @@ def main() -> int:
                     hits = list(Path(media_runtime_path).rglob("media_crawler.db"))
                     db = hits[0] if hits else None
                 if db is None:
-                    print("[Phase 0/media] 未找到 media_crawler.db — 跳过验证（假定 valid_csv 已存在）")
+                    print("[Phase 0/media] media_crawler.db not found — skipping validation (assuming valid_csv already exists)")
                 else:
                     validator = ("export_llm_validated_v2.py" if a.media_validator == "v2"
                                  else "export_llm_validated_v1.py")
