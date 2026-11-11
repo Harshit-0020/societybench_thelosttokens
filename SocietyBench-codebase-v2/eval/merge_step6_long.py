@@ -37,33 +37,33 @@ from common import call_llm, load_pipeline_config, parse_date_obj, read_jsonl
 
 
 PROMPT_FACT = """\
-Expand the following "short version" into a 200–300-character event narrative:
+Please expand the following "short version" into a 200-300-word event description：
 
-- Write in a news-report style, including specific time, people, organizations, actions, and outcomes.
-- **Include only new developments on the given date**; do not recount previous events.
-- Do not use meta-language such as "Summary", "this article", "this report", or "this post".
-- **Use information exclusively from the provided original summaries**. Never add information from memory or inference.
-- If the original summaries do not contain enough information to support 200 characters, produce a shorter narrative rather than inventing facts.
+-Like a press release, including specific time, people, institutions, behaviors, and results
+-**Only write new developments on that date**, do not review old events
+-Prohibit meta-languages such as "abstract", "Article", "the report", "the post", etc.
+-**Information can only come from a given original summary**, and must never be supplemented by memory or inference
+-If the content of the original abstract is not enough to hold up 200 words, I would rather be less than 200 words than fabricate it.
 
-Output only the expanded Chinese paragraph, without any additional explanation.
+Only output the expanded Chinese paragraphs, without any additional instructions.
 
-Short version key points: {short}
+Key points of the short version: {short}
 
-Original summaries (possibly multiple; synthesize them):
+Original summary (there may be multiple, please synthesize)：
 {src}
 """
 
 PROMPT_OPINION = """\
-Please write a 100-200-word summary of public reaction based on the summary of multiple social media public opinion on the day {date} below：
+Based on the following summaries of multiple social media discussions on {date}, write a 100–200-word summary of public reaction:
 
-- Mainstream views (who supports, who opposes, and why)
-- Emotional tone (anger, sympathy, sarcasm, fatigue, etc.)
-- The focus of the dispute (what exactly is the dispute about)
-- Typical remarks/memes
+- Main viewpoints (who people support or oppose, and why)
+- Emotional tone (anger, sympathy, sarcasm, exhaustion, etc.)
+- Points of contention (what specifically people are arguing about)
+- Representative comments or memes
 
-Only write about public opinion itself, and don’t recount what happened. Only output the comprehensive Chinese paragraphs, without any additional instructions.
+Focus only on public opinion; do not recap what happened. Output only one synthesized paragraph in Chinese, with no additional explanation.
 
-================ Public Opinion Summary================
+================ Social Media Discussion Summaries ================
 {posts}
 ================
 """
@@ -146,7 +146,7 @@ def main() -> None:
     by_date: Dict[str, List[str]] = defaultdict(list)
     for r in read_jsonl(Path(args.media_step3_jsonl)):
         body = r.get("summary_clean") or r.get("summary") or ""
-        if body.strip() in ("不相关", "清洗失败", ""):
+        if body.strip() in ("irrelevant", "Cleaning failed", ""):
             continue
         date_str = (r.get("date") or "")[:10]
         if date_str:
@@ -244,7 +244,7 @@ def main() -> None:
     out_lines: List[str] = []
     saw_title = any(ln.startswith("# ") for ln in lines)
     if not saw_title and args.event_name:
-        out_lines.append(f"# {args.event_name} — 长版合并 Timeline")
+        out_lines.append(f"# {args.event_name} — Long version merge Timeline")
         out_lines.append("")
     sec_map = {sec["header_idx"]: sec for sec in sections}
     bullet_lines: set = set()
@@ -260,10 +260,10 @@ def main() -> None:
             out_lines.append("")
             for it in sec["items"]:
                 prefix = f"{it['tag']} " if it["tag"] else ""
-                out_lines.append(f"**事件**：{prefix}{it.get('expanded') or it['short']}")
+                out_lines.append(f"**event**：{prefix}{it.get('expanded') or it['short']}")
                 out_lines.append("")
             if sec.get("opinion"):
-                out_lines.append(f"**舆论**：{sec['opinion']}")
+                out_lines.append(f"**Public opinion**：{sec['opinion']}")
                 out_lines.append("")
             continue
         if i in bullet_lines:
