@@ -37,33 +37,33 @@ from common import call_llm, load_pipeline_config, parse_date_obj, read_jsonl
 
 
 PROMPT_FACT = """\
-请把下面这条"短版"扩写成 200-300 字的事件叙述：
+Please expand the following "short version" into a 200-300-word event description：
 
-- 像新闻稿，包含具体时间、人物、机构、行为、结果
-- **只写该日期的新进展**，不回顾旧事
-- 禁止"摘要""本文""该报道""该帖子"等元语言
-- **信息只能来自给定的原始摘要**，绝不凭记忆或推断补充
-- 如果原始摘要内容不够撑起 200 字，宁可少于 200 字也不要编造
+-Like a press release, including specific time, people, institutions, behaviors, and results
+-**Only write new developments on that date**, do not review old events
+-Prohibit meta-languages such as "abstract", "Article", "the report", "the post", etc.
+-**Information can only come from a given original summary**, and must never be supplemented by memory or inference
+-If the content of the original abstract is not enough to hold up 200 words, I would rather be less than 200 words than fabricate it.
 
-只输出扩写后的中文段落，不要任何额外说明。
+Only output the expanded Chinese paragraphs, without any additional instructions.
 
-短版要点：{short}
+Key points of the short version: {short}
 
-原始摘要（可能多条，请综合）：
+Original summary (there may be multiple, please synthesize)：
 {src}
 """
 
 PROMPT_OPINION = """\
-请基于下面 {date} 当天的多条社媒舆论摘要，写一段 100-200 字的公众反应概括：
+Based on the following summaries of multiple social media discussions on {date}, write a 100–200-word summary of public reaction:
 
-- 主流观点（支持谁、反对谁、为什么）
-- 情绪倾向（愤怒/同情/讽刺/疲惫等）
-- 争议焦点（具体在争什么）
-- 典型言论/梗
+- Main viewpoints (who people support or oppose, and why)
+- Emotional tone (anger, sympathy, sarcasm, exhaustion, etc.)
+- Points of contention (what specifically people are arguing about)
+- Representative comments or memes
 
-只写舆论本身，不要复述事件经过。只输出综合后的中文段落，不要任何额外说明。
+Focus only on public opinion; do not recap what happened. Output only one synthesized paragraph in Chinese, with no additional explanation.
 
-================ 舆论摘要 ================
+================ Social Media Discussion Summaries ================
 {posts}
 ================
 """
@@ -146,7 +146,7 @@ def main() -> None:
     by_date: Dict[str, List[str]] = defaultdict(list)
     for r in read_jsonl(Path(args.media_step3_jsonl)):
         body = r.get("summary_clean") or r.get("summary") or ""
-        if body.strip() in ("不相关", "清洗失败", ""):
+        if body.strip() in ("irrelevant", "Cleaning failed", ""):
             continue
         date_str = (r.get("date") or "")[:10]
         if date_str:
@@ -244,7 +244,7 @@ def main() -> None:
     out_lines: List[str] = []
     saw_title = any(ln.startswith("# ") for ln in lines)
     if not saw_title and args.event_name:
-        out_lines.append(f"# {args.event_name} — 长版合并 Timeline")
+        out_lines.append(f"# {args.event_name} — Long version merge Timeline")
         out_lines.append("")
     sec_map = {sec["header_idx"]: sec for sec in sections}
     bullet_lines: set = set()
@@ -260,10 +260,10 @@ def main() -> None:
             out_lines.append("")
             for it in sec["items"]:
                 prefix = f"{it['tag']} " if it["tag"] else ""
-                out_lines.append(f"**事件**：{prefix}{it.get('expanded') or it['short']}")
+                out_lines.append(f"**event**：{prefix}{it.get('expanded') or it['short']}")
                 out_lines.append("")
             if sec.get("opinion"):
-                out_lines.append(f"**舆论**：{sec['opinion']}")
+                out_lines.append(f"**Public opinion**：{sec['opinion']}")
                 out_lines.append("")
             continue
         if i in bullet_lines:
