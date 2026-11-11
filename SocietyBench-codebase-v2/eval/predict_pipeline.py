@@ -3,7 +3,7 @@
 
 End-to-end predict chain:
   Step -1: GT-refine strict gate (SKILL §Step -1 — requires refined GT +
-           iteration log with explicit "人工审核通过，可进入 predict")
+           iteration log with explicit "Human review approved, proceed to predict")
   Step 0:  anonymize     (predict_step0_prepare.py — Phase 1+2+3)
   Step 1:  prediction points (predict_step1_points.py)
   Step 2:  questionbank (predict_step2_questionbank.py — owns Step 2.0 split)
@@ -34,7 +34,7 @@ def run(name: str, cmd: list[str]) -> None:
 def step_minus_one(timeline_md: Path) -> None:
     """SKILL §Step -1: strict gate. The input must be the refined GT
     (`timeline_merged_long_gt.md`), the merge-side iteration log must exist,
-    and that log must contain CC's explicit `人工审核通过，可进入 predict`
+    and that log must contain CC's explicit `Human review approved, proceed to predict`
     approval. Any failure → hard exit, no auto-bypass.
     """
     refined = timeline_md.parent / "timeline_merged_long_gt.md"
@@ -69,15 +69,15 @@ def step_minus_one(timeline_md: Path) -> None:
         )
 
     log_text = log.read_text(encoding="utf-8", errors="ignore")
-    if "人工审核通过" not in log_text:
+    if "Human review approved" not in log_text:
         sys.exit(
             f"[Step -1/4] iteration log at {log} does not contain "
-            "'人工审核通过，可进入 predict'. SKILL §Step -1 requires explicit CC "
+            "'Human review approved, proceed to predict'. SKILL §Step -1 requires explicit CC "
             "human approval after the 3-round self-check. Complete the review "
             "and append the approval line before re-running predict."
         )
 
-    print("[Step -1/4] refined GT + iteration log + 人工审核通过 — gate passed")
+    print("[Step -1/4] refined GT + iteration log + Human review approved — gate passed")
 
 
 def update_run_latest(workspace: Path, run_id: str) -> None:
@@ -117,7 +117,7 @@ def main() -> None:
 
     py = sys.executable
     cfg_arg = ["--pipeline-config", a.pipeline_config] if a.pipeline_config else []
-    timeline = Path(a.timeline_md)
+    timeline = Path(a.timeline_md) # Timeline mergerd long gt
     workspace = Path(a.output_dir)
     workspace.mkdir(parents=True, exist_ok=True)
 
@@ -125,6 +125,7 @@ def main() -> None:
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # ----- Step -1: GT refine strict gate (SKILL §Step -1) -----
+    # TODO: START FROM HERE!
     #FIXME step_minus_one(timeline)
     # [SKIP THIS ☝️ SINCE IT STRICTLY LOOKS FOR timeline_merged_long_gt ] However we already have timeline_anon.md
 
@@ -136,7 +137,7 @@ def main() -> None:
         else:
             s0_cmd = [py, str(D / "predict_step0_prepare.py"),
                       str(timeline), str(workspace),
-                      "--replacements", a.replacements_json, *cfg_arg]
+                      "--replacements", a.replacements_json, *cfg_arg] # Anonymise timeline_merged_long_gt
             if a.skip_step0_audit:
                 s0_cmd.append("--skip-audit")
             run("predict-step0", s0_cmd)

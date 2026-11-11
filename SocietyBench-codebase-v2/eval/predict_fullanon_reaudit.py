@@ -11,6 +11,10 @@ re-anonymize -> re-check", with two upgrades:
      descriptive identification (fifth-largest -> a specific company), cultural allusions
      (恒河 -> a country, 六芒星 -> a country). These are missed by the deterministic table and
      weaker models (kimi), and only caught by strong-model reasoning.
+
+     STRONG MODEL AND PROMPT : 
+     [PREVENT LONG TAILED LEAKS. RANDOM INFO ABOUT SOMETHING THAT MIGHT GIVE SOME HINTS ABOUT ANY COMPANY]
+
   2) **Scope changed to full-anon**: even **named public terms** (countries / named regulators /
      named financial-report forms / currencies / regions / indices) get anonymized; only
      numbers/amounts/percentages/dates, placeholders like 公司A/国家X, and **generic common
@@ -47,39 +51,43 @@ from predict_step2_anonymize_qb import (
     placeholder_regex, gt_placeholder_set, prune_orphan_questions)
 from common import call_llm, load_replacements
 
+"""
+Report residual content is there or not.
 
-FULLANON_PROMPT = """你是**极其严格**的匿名化审计员。下面是一份文本，真实实体本应已被替换为占位符
-（公司A/机构B/国家X/人物A 等）。本任务目标是**完全匿名**——**任何能让读者定位到现实中某个
-特定主体的专有名词都要揪出来**，包括：
+"""
+FULLANON_PROMPT = """You are an **extremely strict** anonymization auditor. Below is a text in which real entities should already have been replaced with placeholders.
+(Company A/Organisation B/Country X/Person A, etc.) The objective of this task is **Complete Anonymity**——**Identify every proper noun that could allow readers to pinpoint
+a specific real-world entity.**，Including:
 
-【常规具名专名】真实的 国家 / 地区 / 城市；具名的政府部门 / 监管机构 / 国际组织；公司 / 品牌 /
-产品；人名；媒体；具名法规 / 财报表格 / 指数 / 货币（如 某国、某证监会、某10-K表、某货币、某指数）。
-【容易漏的长尾——逐条推理排查】
-  1. **复合 / 派生 / 简称**：实体匿了但其复合派生写法没匿（「美国」匿了漏「美帝/反美/美式/中美沙」）。
-  2. **谐音 / 别名 / 旧名**：正名匿了，谐音或别称没匿（「超微」漏其谐音「超威」）。
-  3. **缩写 / 梗 / 字母游戏**：能拼出真实名称或股票代码的缩写、玩笑式全称、圈内黑话。
-  4. **音译 / 罗马名**：看起来像真实人名的拼音 / 英文名。
-  5. **具体型号 / 专名**：具体武器 / 产品 / 型号 / 机构 / 媒体 / 公司 / 律所名，**哪怕只出现一两次**。
-  6. **描述性指认**：名字虽匿，但**描述性属性**能唯一锁定真实主体（「全球第五大、11.5万员工的会计所」）。
-  7. **文化 / 国别影射**：用文化符号影射真实国家 / 民族（恒河→某国、六芒星→某国、波斯→某国）。
+【Standard Named Entities】 Real-world Countries / Regions / Cities; named government departments / Regulatory agencies / International organizations; companies / Brand /
+Products; personal names; media outlets; named laws and regulations / Financial Report Table / Index / Currenncy (For example, a particular country, a particular securities regulator, a particular Form 10-K, a particular currency, a particular index).
+【Easy-to-Miss Long-Tail Cases—Reason Through and Check Each One】
+  1. **Compounds / Derivatives / Shortened names**:The entity itself was anonymized, but its compound and derived forms weren’t.(“United States” was hidden, but “U.S. imperialism/anti-American/American-style/China–U.S.–Saudi Arabia” slipped through.).
+  2. **Homophones / Aliases / Former names**:The real name was anonymized, but homophones or nicknames weren’t.(Maine / Main — Maine (US state) and main (primary).).
+  3. **Abbreviations / Memes / Letter play**:Abbreviations that spell out real names or ticker symbols, humorous full names, and insider slang.
+  4. **Transliterations / Romanized names**:Pinyin / English names that look like real people's names.
+  5. **Specific models / Proper names**:Names of specific weapons / products / models / institutions / media outlets / companies / law firms,**Even if it only happens once or twice**.
+  6. **Descriptive references**:Although the name is concealed, the **descriptive attributes** can uniquely identify the actual entity("The world’s fifth-largest accounting firm, with 115,000 employees").
+  7. **Cultural / National allusions**:Using cultural symbols to allude to real countries / Ethnic groups(Ganges→A certain country,Hexagram→A certain country,Persia→A certain country).
 
-🔒 **不算残留（保留）**：纯数字 / 金额 / 百分比 / 日期（**注意：金额里的"数字"保留，但"货币名称"
-如 美元 / 欧元 / 人民币 仍是具名实体、要算残留**，如「400美元」要报"美元"）；形如「公司A / 机构B /
-国家X / 人物A」的占位符本身；**泛指常名**——不指向某个具体真实主体的普通名词 / 角色（政府、法院、
-总统、分析师、央行、监管机构[泛指]、公司[泛指]、记者、议员、首都）。
+🔒 **Do not count as residual content(Keep)**：Pure Numbers / Amounts / Percentages / Date(**Note:Keep the "numbers" in monetary amounts, but "currency names"
+such as US dollar / Euro / Chinese yuan are still named entities; and must be counted as residuals**.For example, for “400 US dollars” report “US dollars”);The placeholders themselves, such as “Company A / Organization B /
+Country X / Person A”;**Generic Common Nouns**——Common nouns / roles that do not refer to a specific real-world entity (government, court,
+president, analyst, central bank, regulatory agency [generic], company [generic], journalist, legislator, capital city).
 
-请**逐个候选先在心里推理**「它是否真能让人定位到现实中某个特定主体」，再**只输出 JSON**（无多余文字）：
-{{"clean": <true|false>, "residual_real_names": ["残留串", ...], "note": "一句话"}}
+Please **First, mentally work through each candidate one by one.**Whether it can actually identify a specific real-world entity, Again **Output only JSON** (No extra text):
+{{"clean": <true|false>, "residual_real_names": ["Residual string", ...], "note": "Single sentence"}}
 
-待审计文本：
+Text to be audited:
 {sample}
 """
 
 # Placeholders (type + code, e.g. 国家X/公司A/审计机构B/货币A) — the detector may
 # false-positive on these; filter them out instead of sending to derive.
-PLACEHOLDER_RE = re.compile(r"^[一-鿿]{1,10}[A-Z]\d{0,3}$")
+
+PLACEHOLDER_RE = re.compile(r"^[A-Z][a-z]{1,15}[A-Z]{0,3}\d{0,3}$")
 # Pure numbers/amounts/percentages/dates — always kept by rule; filter out.
-NUMERIC_RE = re.compile(r"^[\d\s.,%+\-—~:：/年月日时分秒万亿元美分$€¥]+$")
+NUMERIC_RE = re.compile(r"^[\d\s.,%+\-—~:：/'year''month''day''hour''minute''second''one''thousand''ten thousand''lakh''ten lakh''crore''ten crore''hundred crore''usd''us dollar''u.s. dollar''inr''rupee'$€¥]+$")
 
 
 def verify_fullanon(samples: List[str], model: str, fallback: str, effort: str) -> Dict[str, Any]:
@@ -104,6 +112,8 @@ def detect_unique(blobs: List[str], model: str, fallback: str, effort: str,
     """Run full-coverage detection on **deduplicated unique text lines** (the GT's contexts/gt
     replicate the timeline per point and are highly redundant; after dedup only the master-copy
     volume remains -> saves time without losing variety). Returns deduped residual candidates."""
+    # Create list of unique lines in lines[]
+    # 
     seen, lines = set(), []
     for blob in blobs:
         for ln in blob.splitlines():
@@ -113,28 +123,44 @@ def detect_unique(blobs: List[str], model: str, fallback: str, effort: str,
                 lines.append(ln)
     chunks: List[List[str]] = []
     cur, n = [], 0
+
+    # Create chunks of lines that stay within the char budget
+    # Store them in chunks list[]
     for ln in lines:
         if cur and n + len(ln) > char_budget:
             chunks.append(cur); cur, n = [], 0
         cur.append(ln); n += len(ln) + 1
+
+    # Also append the last partial chunk as well
     if cur:
         chunks.append(cur)
+    
+    # For each chunk, check whether it contains residuals (non anonymised terms)
+    # ks is the set of residuals encountered in text
+    # out is the same list of residuals
+
     out, ks = [], set()
     for i, ch in enumerate(chunks):
+        # Run verify_full_anon on each chunk
         v = verify_fullanon(ch, model, fallback, effort)
         for nm in (v.get("residual_real_names") or []):
             nm = str(nm).strip()
             if nm and nm.lower() not in ks:
                 ks.add(nm.lower()); out.append(nm)
+
+    # Output the list of non-anonymised terms (residuals) encountered in text 
     return out
 
 
 def is_noise(s: str) -> bool:
     s = s.strip()
-    return (not s) or bool(PLACEHOLDER_RE.match(s)) or bool(NUMERIC_RE.match(s))
+    # S should not be placeholder_RE or NUMERIC_RE 
+    return (not s) or bool(
+        PLACEHOLDER_RE.match(s)) or bool(NUMERIC_RE.match(s))
 
 
 def gt_files(ws: Path) -> List[Path]:
+    """ Lists and stores all files present in contexts and gt subdirectory of workspace """
     fs = [ws / "timeline_anon.md"]
     for sub in ("contexts", "gt"):
         d = ws / sub
@@ -168,30 +194,32 @@ def qb_corpus(qbs: List[Path]) -> List[str]:
     return out
 
 
-FULLANON_DERIVE_PROMPT = """下面是从一份「目标=完全匿名」的文本里检出的「疑似可识别信息」清单。
-请为其中**确实是能定位现实特定主体的专有名词**的项，各分配一个「类型+代号」占位符。
+FULLANON_DERIVE_PROMPT = """Below is a list of "potentially identifiable information" extracted from a text where "Goal=complete anonymity."
+For all items that are **proper nouns capable of identifying specific, real-world entities**, assign a “type + code” placeholder.
 
-⚠️ 这是**完全匿名**任务：具名的 **国家 / 地区 / 海峡 / 城市、监管机构 / 政府部门 / 国际组织、
-政党、公司 / 品牌 / 产品、人名、媒体、具名法规 / 财报表格 / 指数 / 货币、具体型号 / 案号**——
-**都要分配占位符**，**不要因为"是公共词 / 常见 / 通用"就跳过**（本任务就是要把它们也匿掉）。
+⚠️ This is a **completely anonymous** task: Named **Countries / Regions / Straits / Cities, Regulatory Agencies / Government Departments / 
+International Organizations, Political Parties, Companies / Brands / Products, People’s Names, Media Outlets, Named Laws and Regulations /
+Financial Statement Tables / Indexes / Currencies, Specific Model Numbers / Case Numbers/ Reference Numbers**——
+**Assign placeholders to all of them**, **do not skip any just because they are "common / frequently used / generic terms."** 
+(the point of this task is to anonymize them too).
 
-代号规则（类型 + 字母代号）：国家→国家X/Y/Z；地区→地区A；海峡→海峡A；城市→城市A；
-机构/部门/监管机构/组织→机构A；政党→政党A；公司→公司A；媒体→媒体A；人物→人物A/领导人A；
-法规/条款→法规A；财报表格→表格A；货币→货币A；指数→指数A；产品/型号→型号A；案号/编号→编号A；
-**缩写 / 梗 / 字母游戏（能拼出真实名称或股票代码的玩笑式全称、黑话）→ 梗A/别称A** …
-- **同类不同实体用不同代号**；**同一实体（含简称/变体/谐音/子串）复用同一代号**；
-- 占位符不含原文真名、不含连续英文、不含多位数字。
+Code naming rules (type + letter code): Country→CountryX/Y/Z; Region→RegionA; Strait→StraitA; City→CityA;
+Institution/Department/Regulatory Agency/Organization→InstitutionA; Political Party→Political PartyA; Company→CompanyA; Media Outlet→Media OutletA; Person→PersonA/LeaderA;
+Regulation/Provision→RegulationA; Financial Statement Table→TableA; Currency→CurrencyA; Index→IndexA; Product/Model→ModelA; Case Number/Reference Number→NumberA;
+**Abbreviations / memes / wordplay (joke-like full forms or slang that can spell out real names or stock ticker symbols) → MemeA/AliasA** …
+- **Use different code names for distinct entities of the same type**；**The same entity (including abbreviations/variants/homophones/substrings) reuses the same code name**；
+- Placeholders must not contain real names from the original text, consecutive English letters, or multi-digit numbers.
 
-**只跳过这些（不分配、不输出）**：纯数字 / 金额 / 百分比 / 日期；已是占位符（国家X/公司A…）；
-**纯普通名词 / 角色**（不指向某个具体真实主体，如 政府、法院、总统、分析师、记者、内衣、年轻人、华人）；
-**纯描述性句子**（**且不含可还原的真名或代码**——若一句话里嵌着能拼出真名/代码的梗，仍要把那个梗匿掉）。
+**Only skip these (no allocation, no output)**：pure numbers / monetary amounts / percentages / dates;Existing placeholders(CountryX/CompanyA…）；
+**Generic common nouns / roles**(not referring to any specific real-world entity, such as government, court, president, analyst, journalist, young people, or Indian people);
+**Purely descriptive sentences**(**containing no recoverable real names or codes**——if a sentence contains a "meme" or reference that can be decoded to reveal a real name or code, that "meme" or reference must still be anonymized).
 
-已有映射（真名 → 已分配代号）。给新实体避开已用代号、对变体/简称复用同一代号：
+Existing mappings (real name → assigned code name). Assign unique codes to new entities—avoiding codes already in use—and reuse the same code for variants or abbreviations:
 {existing_map}
 
-只输出 JSON 数组（无额外文字）：[["真实专名","占位符"], ...]；跳过的不要出现。
+Only output JSON Array (No additional text):[["Real proper names","Placeholder"], ...]；Do not include items that have been skipped.
 
-清单：
+List:
 {names_block}
 """
 
@@ -210,7 +238,7 @@ def derive_fullanon(cands: List[str], model: str, existing_rules) -> List[List[s
         return []
     pairs = [p for p in (existing_rules or [])
              if isinstance(p, (list, tuple)) and len(p) >= 2 and str(p[1]).strip()]
-    existing_map = "\n".join(f"- {str(p[0]).strip()} → {str(p[1]).strip()}" for p in pairs[-120:]) or "（暂无）"
+    existing_map = "\n".join(f"- {str(p[0]).strip()} → {str(p[1]).strip()}" for p in pairs[-120:]) or "(None)"
     prompt = FULLANON_DERIVE_PROMPT.format(
         names_block="\n".join(f"- {n}" for n in names), existing_map=existing_map)
     try:
@@ -242,10 +270,23 @@ def derive_fullanon(cands: List[str], model: str, existing_rules) -> List[List[s
             continue
         if len(good) > max(10, len(bad)):
             continue
-        if re.search(r"[A-Za-z]{2,}|\d{2,}", good):
+
+        # THIS RE IS WRONG, NEED TO DESIGN NEW ONE
+        # THIS RE ALLOWS 54,756 (entries) proper nouns to be anonymised AT MAX
+        # TODO: FROM HERE!
+        # (WONT WORK) : TAKE ALL STRINGS, DON´T FILTER OUT ANY GOOD STRINGS AT ALL
+        # UNCOMMENT BELOW TO FILTER [NEEDS SOME DETERMINISM]
+
+        # [HAS SOME STRUCTUREssssss]
+        # ALLOWS AT_MAX 3 letters to be added in the placeholder, and atmost 3 numbers to be added
+        # THEREBY CREATING A MAX OF 54756 replacements
+        if re.search(r"[A-Z]{4,}|\d{4,}", good):
             continue
+
         if bad.lower() in good.lower():
             continue
+
+
         out.append([bad, good])
     return out
 
@@ -265,15 +306,15 @@ def main() -> None:
     tbl_path = Path(a.replacements) if a.replacements else ws / "replacements_effective.json"
     replacements = load_replacements(tbl_path)
     repl = build_replacer(replacements)
-    gfs = gt_files(ws)
-    qbs = sorted((ws / "questionbank").glob("P*.json")) if (ws / "questionbank").is_dir() else []
-    print(f"[init] GT 文件 {len(gfs)} 个，题库 {len(qbs)} 个，表 {len(replacements)} 条规则")
+    gfs = gt_files(ws) # All files present in gt subdirectories
+    qbs = sorted((ws / "questionbank").glob("P*.json")) if (ws / "questionbank").is_dir() else [] # get the path of all questionbank files
+    print(f"[init] GT Files {len(gfs)} Items, Question Bank {len(qbs)} Items, Table has {len(replacements)} Rules") 
 
     # 0) First re-apply the existing table deterministically (rolls out full-anon rules
     #    already in the table; idempotent)
-    apply_text(gfs, repl)
+    apply_text(gfs, repl) # repl is the replacer, it replaces with anonymisation in all gtfiles 
     if qbs:
-        apply_table(qbs, repl)
+        apply_table(qbs, repl) # repl is the replacer, it replaces with anonymisation in all question bank files 
 
     have = {str(r[0]) for r in replacements if isinstance(r, (list, tuple)) and r}
     report: Dict[str, Any] = {"model": a.model, "effort": a.reasoning_effort, "rounds": []}
@@ -284,35 +325,40 @@ def main() -> None:
         # thousands of questions / hundreds of thousands of chars and would stall detection,
         # and the bank's own knowledge injection is handled by step2.5 (gpt-5.5); rules derived
         # here are still applied to the bank.
-        blobs = [f.read_text(encoding="utf-8") for f in gfs]
-        resid = detect_unique(blobs, a.model, a.fallback, a.reasoning_effort, char_budget=a.char_budget)
-        cands = [c for c in resid if not is_noise(c) and c not in have]
-        print(f"[round {rnd}] 检出残留 {len(resid)}，去噪/去已知后待匿 {len(cands)}：{cands[:15]}")
+        blobs = [f.read_text(encoding="utf-8") for f in gfs] # Store texts of all files present in gt folder
+        resid = detect_unique(blobs, a.model, a.fallback, a.reasoning_effort, char_budget=a.char_budget) # List of residuals (non-anonymised terms present in blob/text)
+        cands = [c for c in resid if not is_noise(c) and c not in have] # not existing residual, and is a proper noun not some noise
+        print(f"[round {rnd}] Residuals detected {len(resid)}，Denoising/Removing known elements in preparation for anonymization {len(cands)}：{cands[:15]}")
         report["rounds"].append({"round": rnd, "residual": resid, "to_anon": cands})
         if not cands:
-            print("  ✅ 无新增可匿专名，收敛"); break
+            print("  ✅ No new proper names to anonymize; the process has converged."); break
         new_rules = derive_fullanon(cands, model=a.model, existing_rules=replacements)
         new_rules = [r for r in new_rules if r and str(r[0]) not in have]
+        # If no new residuals are found =>
         if not new_rules:
-            print("  derive 全判为非专名/泛指，停"); break
-        print(f"  derive 生成 {len(new_rules)} 条新规则：{new_rules[:8]}")
+            print("Classify all instances of residuals as non-proper nouns/generic references, then stop."); break
+        # Else is new residuals and rules are found =>
+        print(f"Derivations generated {len(new_rules)}, New rules: {new_rules[:8]}")
         replacements += new_rules
         added += new_rules
-        have |= {str(r[0]) for r in new_rules}
+        have |= {str(r[0]) for r in new_rules} # have = have | {str(r[0]) for r in new_rules}
         repl = build_replacer(replacements)
-        apply_text(gfs, repl)
+        apply_text(gfs, repl) # Apply anonymisation replacements to gt files
         if qbs:
-            apply_table(qbs, repl)
+            apply_table(qbs, repl) # And to question banks
 
     # Write the table back + deterministic correctness check (all in-table real-name LHS
     # should be washed out; count should be 0)
     if added:
         tbl_path.write_text(json.dumps(replacements, ensure_ascii=False, indent=2), encoding="utf-8")
-    lhs = sorted({str(o) for o, _ in _expand_variants(replacements) if o}, key=len, reverse=True)
+    # Sort replacement rules in longest LHS first 
+    # lhs = sorted({str(o) for o, _ in _expand_variants(replacements) if o}, key=len, reverse=True)
+    # Remove expand_variants : No need for expand variants anymore
+    lhs = sorted({str(o) for o, _ in replacements if o}, key=len, reverse=True)
     blob = "".join(f.read_text(encoding="utf-8") for f in gfs) + "".join(
-        f.read_text(encoding="utf-8") for f in qbs)
+        f.read_text(encoding="utf-8") for f in qbs) # Combine lines of question banks and gt files together
     det = {o: blob.count(o) for o in lhs if o and o in blob}
-    report["deterministic_residual"] = det
+    report["deterministic_residual"] = det # Contains the residual string, and # times it appears in all texts. Eg. Musk:250
 
     # Off-topic question gate: question placeholders must be a subset of GT placeholders (per
     # the mapping produced by GT anonymization; drop questions about entities the GT lacks)

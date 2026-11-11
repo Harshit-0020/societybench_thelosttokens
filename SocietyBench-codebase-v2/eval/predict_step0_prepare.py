@@ -106,7 +106,9 @@ def phase1_replace(
     fixes that were performed.
     """
     # Gate (1): expand each rule into Simplified/Traditional variants first.
-    replacements = _expand_variants(replacements)
+    # NOT NEEDED SINCE, WE DON´T HAVE CHINESE TEXT ANYMORE
+    # replacements = _expand_variants(replacements)
+
 
     # Gate (2): drop dangerous single-char keys. Chinese has no word boundaries, so a
     # single-char key matches as a substring and corrupts unrelated common words
@@ -115,7 +117,11 @@ def phase1_replace(
     # inserted placeholders (国家X → 国家公司A). Such keys are never safe: an entity
     # this short must be covered by multi-char rules (中国, 加拿大, X平台); anything
     # missed is caught by reaudit adding multi-char rules.
+    # FIXME: drop very short strings [MAYNOT BE RELATED TO ENGLISH LANGUAGE]
+
+    # All the stuff that was dropped for being too short
     dropped_short = sorted({old for old, _new in replacements if len(str(old).strip()) <= 1})
+    # All of the remaining replacements
     reps = [(old, new) for old, new in replacements if len(str(old).strip()) >= 2]
 
     # Gate (3): close replacement values under the rule set — first fully resolve rules
@@ -129,13 +135,16 @@ def phase1_replace(
     _kv: Dict[str, str] = {}
     for _o, _n in reps:
         _kv.setdefault(_o, _n)
+    # Key value pairs for reps, with longest keys first
     _keys_long_first = sorted(_kv, key=len, reverse=True)
+
 
     def _resolve(val: str, own: str) -> str:
         for _ in range(10):  # bounded fixed point, guards against self-reference/cycles
             changed = False
             for k in _keys_long_first:
                 if k != own and k in val:
+                    # longest key contained within another is replaced first
                     nv = val.replace(k, _kv[k])
                     if nv != val:
                         val, changed = nv, True
@@ -143,6 +152,7 @@ def phase1_replace(
                 break
         return val
 
+    # create the replacements over here
     reps = [(old, _resolve(new, old)) for old, new in reps]
 
     # Longest-first: at each position take the longest key matching there. Bucket by first char for speed.
@@ -190,8 +200,8 @@ def phase1_replace(
         "role_prefix_fixes": {},
         "pass2_hits": {},
     }
+    
     return out, stats
-
 
 # ===========================================================================
 # Date shifting (idempotent on YYYY-MM-DD and YYYY年MM月DD日 forms)
@@ -203,7 +213,10 @@ def shift_dates(text: str, delta_days: int) -> str:
 
     # Year-less "M月D日" dates (common in body text) need a reference year for the delta:
     # take the first 4-digit year in the text, default 2026.
-    _ym = re.search(r"(\d{4})\s*[-年]", text)
+    
+    # FIXME: Change the dates RE later. Something than can look for dates ?
+    # _ym = re.search(r"(\d{4})\s*[-年]", text)
+    _ym = re.search(r"(?<!\d)(\d{4})(?!\d)", text)
     ref_year = int(_ym.group(1)) if _ym else 2026
 
     shifted_ranges: List[str] = []
@@ -215,8 +228,45 @@ def shift_dates(text: str, delta_days: int) -> str:
     def _month_after(year: int, month: int) -> Tuple[int, int]:
         return (year + 1, 1) if month == 12 else (year, month + 1)
 
-    def _shift_cn_range(m: re.Match) -> str:
+    def _shift_en_range(m: re.Match) -> str:
         year_s, mon_s, day_s, sep, end_day_s = m.groups()
+        year = int(year_s) if year_s else ref_year
+        mon = int(mon_s)
+        day = int(day_s)
+        end_day = int(end_day_s)
+        sep = "->"
+
+        try:
+            start = date(year, mon, day)
+        except ValueError:
+            return m.group(0)
+        end_year, end_mon = year, mon
+
+        if end_day < day:
+            end_year, end_mon = _month_after(year, mon)
+        try:
+            end = date(end_year, end_mon, end_day)
+        except ValueError:
+            return m.group(0)
+        start2 = start + timedelta(days=delta_days)
+        end2 = end + timedelta(days=delta_days)
+        if year_s:
+            if start2.year == end2.year:
+                if start2.month == end2.month:
+                    out = f"{start2.year}-{start2.month}-{start2.day}{sep}{end2.day}"
+                else:
+                    out = f"{start2.year}-{start2.month}-{start2.day}{sep}{end2.month}-{end2.day}"
+            else:
+                out = f"{start2.year}-{start2.month}-{start2.day}{sep}{end2.year}-{end2.month}-{end2.day}"
+        elif start2.month == end2.month:
+            out = f"{start2.month}-{start2.day}{sep}{end2.day}"
+        else:
+            out = f"{start2.month}-{start2.day}{sep}{end2.month}-{end2.day}"
+        return _stash_shifted_range(out)
+
+    def _shift_cn_range(m: re.Match) -> str:
+        mon_s, day_s,end_day_s, year_s = m.groups()
+        sep = "-"
         year = int(year_s) if year_s else ref_year
         mon = int(mon_s)
         day = int(day_s)
@@ -266,7 +316,15 @@ def shift_dates(text: str, delta_days: int) -> str:
             return m.group(0)
         d2 = d + timedelta(days=delta_days)
         return f"{d2.year}年{d2.month}月{d2.day}日"
-
+    
+    def _shift_en(m: re.Match) -> str:
+        try:
+            d = date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return m.group(0)
+        d2 = d + timedelta(days=delta_days)
+        return f"{d2.year}-{d2.month}-{d2.day}"
+    
     def _shift_cn_md(m: re.Match) -> str:  # year-less "M月D日" → shift in sync, output "M月D日" only
         try:
             d = date(ref_year, int(m.group(1)), int(m.group(2)))
@@ -274,6 +332,14 @@ def shift_dates(text: str, delta_days: int) -> str:
             return m.group(0)
         d2 = d + timedelta(days=delta_days)
         return f"{d2.month}月{d2.day}日"
+
+    def _shift_en_md(m: re.Match) -> str:  # year-less "M月D日" → shift in sync, output "M月D日" only
+        try:
+            d = date(ref_year, int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return m.group(0)
+        d2 = d + timedelta(days=delta_days)
+        return f"{d2.month} {d2.day}"
 
     def _shift_relative_cn_md(m: re.Match) -> str:
         prefix, mon_s, day_s = m.groups()
@@ -284,6 +350,15 @@ def shift_dates(text: str, delta_days: int) -> str:
         d2 = d + timedelta(days=delta_days)
         return f"{prefix}{d2.month}月{d2.day}日"
 
+    def _shift_relative_en_md(m: re.Match) -> str:
+        prefix, mon_s, day_s = m.groups()
+        try:
+            d = date(ref_year, int(mon_s), int(day_s))
+        except ValueError:
+            return m.group(0)
+        d2 = d + timedelta(days=delta_days)
+        return f"{prefix}{d2.month}-{d2.day}"
+
     def _shift_cn_ym(m: re.Match) -> str:
         try:
             d = date(int(m.group(1)), int(m.group(2)), 1)
@@ -291,6 +366,15 @@ def shift_dates(text: str, delta_days: int) -> str:
             return m.group(0)
         d2 = d + timedelta(days=delta_days)
         return f"{d2.year}年{d2.month}月"
+
+    def _shift_en_ym(m: re.Match) -> str:
+        try:
+            "date needs: YEAR, MONTH, DAY"
+            d = date(int(m.group(2)), int(m.group(1)), 1)
+        except ValueError:
+            return m.group(0)
+        d2 = d + timedelta(days=delta_days)
+        return f"{d2.year} {d2.month}"
 
     def _shift_cn_month(m: re.Match) -> str:
         try:
@@ -300,21 +384,108 @@ def shift_dates(text: str, delta_days: int) -> str:
         d2 = d + timedelta(days=delta_days)
         return f"{d2.month}月"
 
+    def _shift_en_month(m: re.Match) -> str:
+        try:
+            d = date(ref_year, int(m.group(1)), 1)
+        except ValueError:
+            return m.group(0)
+        d2 = d + timedelta(days=delta_days)
+        return f"{d2.month}"
+
     # Handle bare-end-day ranges like "1月17日至18日 / 5月9到12日" first and stash the
     # results, so later single-date rules neither shift only the start date nor
     # re-shift an already shifted range.
-    text = re.sub(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日?\s*(至|到|[-—~])\s*(\d{1,2})日", _shift_cn_range, text)
+
+    # CHINESE RE : 
+    # This RE will not be used, since we´re not using chinese news. We will not encounter chinese dates over there. 
+    # These RE will not match
+    # text = re.sub(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日?\s*(至|到|[-—~])\s*(\d{1,2})日", _shift_cn_range, text)
+
+    # SUBS(DATE RANGES): Matching following format : March 15–20, 2025 & 15–20 March 2025
+    RE_EN_FM1 = r"(?:(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+)?(\d{1,2})(?:st|nd|rd|th)?\s*(?:-|–|—|~|to|through)\s*(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?"
+    RE_EN_FM2 = r"(\d{1,2})(?:st|nd|rd|th)?\s*(?:-|–|—|~|to|through)\s*(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:,?\s*(\d{4}))?"
+
+    text = re.sub(RE_EN_FM1, _shift_en_range, text)
+    text = re.sub(RE_EN_FM2, _shift_en_range, text)
+
+    # RE for ISO date format. This ISO format will match
     text = re.sub(r"(\d{4})-(\d{2})-(\d{2})", _shift_iso, text)
-    text = re.sub(r"(\d{4})年(\d{1,2})月(\d{1,2})日", _shift_cn, text)
-    text = re.sub(r"(当年|同年)(\d{1,2})月(\d{1,2})日", _shift_relative_cn_md, text)
-    text = re.sub(r"(\d{4})年(\d{1,2})月(?!\d|日|个)", _shift_cn_ym, text)
-    # Year-less "M月D日" in body text must shift in sync too; negative lookbehinds skip the already handled "…年M月D日"
-    text = re.sub(r"(?<!\d)(?<!年)(\d{1,2})月(\d{1,2})日", _shift_cn_md, text)
-    text = re.sub(r"(?<!\d)(?<!年)(\d{1,2})月(?!\d|日|个)", _shift_cn_month, text)
+
+    # RE for chinese date format. These chinese dates RE will not match.
+    # """This Chinese regex matches a full date consisting of year, month, and day, such as 2025年3月15日"""
+    # text = re.sub(r"(\d{4})年(\d{1,2})月(\d{1,2})日", _shift_cn, text)
+
+    "Format A: Month Day, Year, Format B: Day Month Year"
+    RE2_EN_FM1 = r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})"
+    RE2_EN_FM2 = r"(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})"
+    text = re.sub(RE2_EN_FM1, _shift_en, text)
+    text = re.sub(RE_EN_FM2, _shift_en, text)
+    
+
+    # RE for (SAMEYEAR)MM/DD format. These chinese dates RE will also not match.
+    # This Chinese regex matches dates where the year is expressed relatively as "the current year" or "the same year", followed by a month and day."
+    # text = re.sub(r"(当年|同年)(\d{1,2})月(\d{1,2})日", _shift_relative_cn_md, text)
+    RE3_EN_FM1 = r"(?:(?:in|later in|earlier in|during)\s+)?(that year|the same year),?\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?"
+    RE3_EN_FM2 = r"(?:on\s+)?(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(that year|the same year)"
+
+    text = re.sub(RE3_EN_FM1, _shift_relative_en_md, text)
+    text = re.sub(RE3_EN_FM2, _shift_relative_en_md, text)
+
+
+    # RE for YYYY/MM/DD format. These chinese RE will not match
+    "This Chinese regex matches a year and month expression, without requiring a day, while excluding certain unwanted continuations."
+    # text = re.sub(r"(\d{4})年(\d{1,2})月(?!\d|日|个)", _shift_cn_ym, text)
+
+    RE4_EN_FM1 = r"(?:(?:in|during)\s+)?(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec),?\s+(?:of\s+)?(\d{4})(?!\d)"
+    text = re.sub(RE4_EN_FM1, _shift_en_ym, text)
+
+    # RE for 
+    # Year-less "M月D日" in body text must shift in sync too; n
+    # Negative lookbehinds skip the already handled "…年M月D日"
+
+    """
+    Matches only MM\DD format
+    This is a Regular Expression (Regex) used to match dates
+    written in Japanese or Chinese-style month/day format, 
+    such as 3月15日 or 12月25日."""
+    """
+    ?<!\d) -> Negative lookbehind: The preceding character must NOT be a digit (0–9).
+    (?<!年) -> Negative lookbehind: The preceding character must NOT be 年 (year character).
+    """
+
+    "This Chinese regex matches a month-day date without an explicitly specified year, such as 3月15日 or 12月25日."
+    # text = re.sub(r"(?<!\d)(?<!年)(\d{1,2})月(\d{1,2})日", _shift_cn_md, text)
+    "MONTH/DAY Pattern"
+    RE5_EN_FM1 = r"(?<!\d)(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{1,2})(?:st|nd|rd|th)?(?!\d)"
+    "DAY/MONTH Pattern"
+    RE5_EN_FM2 = r"(?<!\d)(\d{1,2})(?:st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)(?![a-z])"
+    text = re.sub(RE5_EN_FM1, _shift_en_md, text)
+
+
+    
+    """
+    This is a Regular Expression (Regex) designed to match a month expression
+    in Chinese/Japanese text, such as 3月 or 12月, while avoiding certain unwanted matches.
+
+    REGEX : (?<!\d)(?<!年)(\d{1,2})月(?!\d|日|个)
+
+    1. Explanation of each part
+    Meaning
+
+    (?<!\d) : Negative lookbehind: Previous character must not be a digit.
+    (?<!年) : Negative lookbehind: Previous character must not be 年 (year).
+    (\d{1,2}) : Captures 1 or 2 digits (month number).
+    月 : Matches the literal character 月 (month).
+    (?!\d\|日\|个) : Negative lookahead: Next character must not be a digit, 日, or 个.
+    """
+    # text = re.sub(r"(?<!\d)(?<!年)(\d{1,2})月(?!\d|日|个)", _shift_cn_month, text)
+
+    RE6_EN_FM1 = r"(?<![a-z0-9])(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)(?![a-z]|\s+\d{1,2}(?:st|nd|rd|th)?\b)"
+    text = re.sub(RE6_EN_FM1, _shift_en_month ,text)
+
     for idx, value in enumerate(shifted_ranges):
         text = text.replace(f"__SHIFTED_DATE_RANGE_{idx}__", value)
     return text
-
 
 # ===========================================================================
 # Phase 2: LLM semantic audit
@@ -690,12 +861,32 @@ def run_consistency_check(original: str, anon: str, *, model: str) -> Dict[str, 
 
 # Numeric-fact tokens: a value plus a unit (percentage/currency/scale word/shares/multiple/points).
 # Bare dates (no unit) are excluded — dates are intentionally shifted.
-_FACT_NUM_RE = re.compile(
-    r"[0-9][0-9.,]*\s*(?:%|％|个百分点|个基点|美元|美金|港元|港币|人民币|欧元|日元|"
-    r"元|亿|万|千|股|倍|bps|点)"
+# _FACT_NUM_RE = re.compile(
+#     r"[0-9][0-9.,]*\s*(?:%|％|个百分点|个基点|美元|美金|港元|港币|人民币|欧元|日元|"
+#     r"元|亿|万|千|股|倍|bps|点)"
+# )
+
+_FACT_NUM_EN_RE = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"(?:"
+    # Currency prefix: $5 million, €10 billion
+    r"[$€£¥]\s*[0-9][0-9,.]*\s*"
+    r"(?:thousand|million|billion|trillion|k|m|bn)?"
+    r"|"
+    # Number followed by unit: 15%, 200 bps, 5 million shares
+    r"[0-9][0-9,.]*\s*"
+    r"(?:"
+    r"%|percent(?:age)?(?:\s+points?)?|pp|"
+    r"basis\s+points?|bps|bp|"
+    r"USD|EUR|GBP|JPY|CNY|INR|"
+    r"dollars?|euros?|pounds?|yen|"
+    r"thousand|million|billion|trillion|k|m|bn|"
+    r"shares?|stocks?|times?|x|points?|pts"
+    r")"
+    r")"
+    r"(?![A-Za-z])",
+    re.IGNORECASE
 )
-
-
 def number_preservation_check(original: str, anon: str) -> Dict[str, Any]:
     """Code hard gate (2), deterministic fact-preservation gate: compare the multisets of
     numeric facts in the original vs the anonymized text.
@@ -707,8 +898,13 @@ def number_preservation_check(original: str, anon: str) -> Dict[str, Any]:
     """
     from collections import Counter
     norm = lambda s: s.replace(" ", "").replace(",", "").replace("，", "")
-    co = Counter(norm(t) for t in _FACT_NUM_RE.findall(original))
-    ca = Counter(norm(t) for t in _FACT_NUM_RE.findall(anon))
+    # co = Counter(norm(t) for t in _FACT_NUM_RE.findall(original))
+    # ca = Counter(norm(t) for t in _FACT_NUM_RE.findall(anon))
+
+    co = Counter(norm(t) for t in _FACT_NUM_EN_RE.findall(original))
+    ca = Counter(norm(t) for t in _FACT_NUM_EN_RE.findall(anon))
+
+
     lost = co - ca       # in the original but lost in the anon text = factual number erased (severe)
     gained = ca - co     # appears only in the anon text (usually a replacement side effect, minor)
     ok = sum(lost.values()) == 0
@@ -718,7 +914,8 @@ def number_preservation_check(original: str, anon: str) -> Dict[str, Any]:
         "n_anon": sum(ca.values()),
         "numbers_lost": dict(lost),
         "numbers_gained": dict(gained),
-        "_note": "确定性数字多重集比对；numbers_lost 非空=有事实数字被匿名抹掉",
+        "_note": "Deterministic numeric multiset comparison; \
+            nonempty numbers_lost = factual numbers were removed during anonymization",
     }
 
 
@@ -816,7 +1013,9 @@ def main() -> None:
             rnd = random.Random(args.seed)
             delta = rnd.randint(-max_d, max_d)
 
+        # Perform Anonymisation replacements
         anon, phase1_stats = phase1_replace(raw_text, replacements)
+        # Perform delta shifting
         anon = shift_dates(anon, delta)
 
         (out_dir / "timeline_anon.md").write_text(anon, encoding="utf-8")

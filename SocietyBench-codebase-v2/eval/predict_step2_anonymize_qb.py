@@ -175,11 +175,15 @@ def load_gt_text(ws: Path) -> str:
 
 
 def placeholder_regex(replacements: List[List[str]]) -> "re.Pattern":
-    """**Data-driven**: extract placeholder types (国家/公司/审计机构/梗/编号...) from the
+    """**Data-driven**: extract placeholder types (Country/Company/Auditing Firm/Meme/ID Number...) from the
     replacement-table RHS and build a regex matching "type + capital letter + optional
-    digits" (e.g. 国家Y/公司A7/审计机构B). No hardcoded type list; generic across events."""
+    digits" (e.g. CountryY/CompanyA7/Auditing FirmB). No hardcoded type list; generic across events."""
     types = set()
-    for _, n in _expand_variants(replacements):
+
+    # No need for _expand_variants, since text is not in chinese anymore
+    # for _, n in _expand_variants(replacements):
+    "^[A-Z][a-z]{1,15}[A-Z]\d{0,3}$"
+    for _, n in replacements:
         m = re.match(r"^(.+?)[A-Z]\d*$", str(n))
         if m and m.group(1):
             types.add(m.group(1))
