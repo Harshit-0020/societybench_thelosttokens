@@ -39,14 +39,14 @@ def main() -> None:
     p.add_argument("output_dir", help="merged output directory")
     # SKILL §argument-hint lists only the 6 positional args; event-name is
     # optional, defaulting to a generic label so standalone runs don't fail.
-    p.add_argument("--event-name", default="事件")
+    p.add_argument("--event-name", default="event")
     p.add_argument("--skip-gt-refine", action="store_true",
                    help="Skip Step 6.5 GT refine (only run when you'll handle predict-GT separately)")
     p.add_argument("--articles-json", default=None,
                    help="Optional gt_workspace/timeline_articles.json — when given, Step 6.5 "
                         "performs SKILL §date fallback bundle repair for short GT nodes.")
     p.add_argument("--strict-approval", action="store_true",
-                   help="Per SKILL §completion check: hard-exit if iteration log lacks '人工审核通过，可进入 predict'. "
+                   help="Per SKILL §completion check: hard-exit if iteration log lacks 'Human review approved, proceed to predict'. "
                         "Default behavior is to warn; predict-pipeline's Step -1 gate still enforces this strictly.")
     p.add_argument("--model", default=None)
     p.add_argument("--pipeline-config", default=None)
@@ -100,12 +100,13 @@ def main() -> None:
     long_nodes = sum(1 for ln in merged_long.read_text(encoding="utf-8").splitlines()
                      if date_re.match(ln.strip()))
     if short_nodes == 0:
-        raise SystemExit(f"[merge-pipeline §完成检查] {merged_short} has 0 date nodes — Step 5 broken")
+        # §完成检查 --> § Completion Check
+        raise SystemExit(f"[merge-pipeline § Completion Check] {merged_short} has 0 date nodes — Step 5 broken")
     retention = long_nodes / short_nodes
-    print(f"[merge-pipeline §完成检查] date nodes: short={short_nodes} long={long_nodes} ({retention:.0%})")
+    print(f"[merge-pipeline § Completion Check date nodes: short={short_nodes} long={long_nodes} ({retention:.0%})")
     if retention < 0.8:
         raise SystemExit(
-            f"[merge-pipeline §完成检查] merged_long has {long_nodes} date nodes vs "
+            f"[merge-pipeline § Completion Check] merged_long has {long_nodes} date nodes vs "
             f"merged_short {short_nodes} (<80% retained) — Step 6 likely truncated"
         )
 
@@ -135,10 +136,11 @@ def main() -> None:
     # In strict mode, hard-exit; otherwise warn (predict-pipeline's Step -1 gate
     # will still refuse to run on an unapproved GT).
     log_text = iter_log.read_text(encoding="utf-8")
-    approved = "人工审核通过" in log_text
+    approved = "Human review approved" in log_text
     if not approved:
+        # 人工审核通过，可进入 --> Human review approved, proceed to
         msg = (
-            "iteration log at {p} does NOT contain '人工审核通过，可进入 predict'. "
+            "iteration log at {p} does NOT contain 'Human review approved, proceed to predict'. "
             "Complete Rounds 2/3 + CC review and append the approval line."
         ).format(p=iter_log)
         if a.strict_approval:
@@ -146,13 +148,13 @@ def main() -> None:
         print("\n⚠️  " + msg + "\n   (use --strict-approval to make this a hard error)")
 
     print("\n═══════════════════════════════════")
-    print(f"  Merge Pipeline 完成 — {a.event_name}")
+    print(f"  Merge Pipeline Completed — {a.event_name}")
     print("═══════════════════════════════════")
-    print(f"  合并短版：{merged_short}")
-    print(f"  合并长版：{merged_long}")
-    print(f"  预测 GT： {refined}")
-    print(f"  报告：    {report_json}")
-    print(f"  迭代记录：{iter_log}  {'✅ approved' if approved else '⚠️ pending CC review'}")
+    print(f"  Merged Short Version: {merged_short}")
+    print(f"  Merged Long Version: {merged_long}")
+    print(f"  Prediction GT: {refined}")
+    print(f"  Report:         {report_json}")
+    print(f"  Iteration Log:  {iter_log}  {'✅ approved' if approved else '⚠️ pending CC review'}")
 
 
 if __name__ == "__main__":

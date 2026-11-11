@@ -31,16 +31,16 @@ from common import call_llm, load_pipeline_config
 
 
 PROMPT = """\
-请决定下面同一天 ({date}) web 与 media 列表里哪些条目说的是**同一件事**：
+Please decide which entries in the web and media lists for the same day ({date}) refer to the **same event**:
 
-- 同一件事 → 输出一行：`MERGE: w_idx, m_idx`（可多 web 多 media，如 `MERGE: w0, w2, m1`）
-- 独立条目 → 输出 `KEEP_W: w_idx` 或 `KEEP_M: m_idx`
-- 每行一条指令，不要带其他文字
+- Same event → Output one line: `MERGE: w_idx, m_idx` (multiple web and media entries are allowed, e.g., `MERGE: w0, w2, m1`)
+- Independent entries → Output `KEEP_W: w_idx` or `KEEP_M: m_idx`
+- One instruction per line. Do not include any other text.
 
-================ 日期 {date} ================
-[web 候选]
+================ Date {date} ================
+[Web Candidates]
 {web_block}
-[media 候选]
+[Media Candidates]
 {media_block}
 ================
 """
@@ -216,7 +216,8 @@ def main() -> None:
                 log(f"thread error: {e}", log_path)
 
     def stage_of(date: str) -> str:
-        return web_stage_by_date.get(date) or media_stage_by_date.get(date) or "未分阶段"
+        # 未分阶段 --> Unstaged
+        return web_stage_by_date.get(date) or media_stage_by_date.get(date) or "Unstaged"
 
     by_stage: Dict[str, List[str]] = defaultdict(list)
     for d in all_dates:
@@ -231,11 +232,12 @@ def main() -> None:
             seen_stages.append(stage)
 
     title_prefix = (args.event_name + " — ") if args.event_name else ""
+    # 两边都有 → Both
     out_lines: List[str] = [
-        f"# {title_prefix}合并 Timeline（短版）",
+        f"# {title_prefix}Merged Timeline (Short Version)",
         "",
-        "> 来源：Web（新闻文章）+ Media（社媒帖子）",
-        "> [W] = 仅新闻 | [M] = 仅社媒 | [WM] = 两边都有",
+        "> Source: Web (News Articles) + Media (Social Media Posts)",
+        "> [W] = News Only | [M] = Social Media Only | [WM] = Both",
         "",
         "---",
         "",
@@ -259,9 +261,9 @@ def main() -> None:
 
     out_lines.append("---")
     out_lines.append("")
-    out_lines.append("**统计**：")
+    out_lines.append("**Statistics**:")
     for tag in ("[W]", "[M]", "[WM]"):
-        out_lines.append(f"- {tag}：{counts[tag]} 条")
+        out_lines.append(f"- {tag}: {counts[tag]} items")
 
     out_path = out_dir / "timeline_merged_short.md"
     out_path.write_text("\n".join(out_lines), encoding="utf-8")
@@ -278,7 +280,7 @@ def main() -> None:
     if missing_id_rows:
         sample = "\n  ".join(missing_id_rows[:5])
         raise SystemExit(
-            f"[merge-step5 §完成检查] {len(missing_id_rows)} event bullet(s) in "
+            f"[merge-step5 § Completion Check] {len(missing_id_rows)} event bullet(s) in "
             f"{out_path} are missing [ID: ...] markers. First few:\n  {sample}"
         )
 

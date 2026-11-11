@@ -24,13 +24,15 @@ from common import call_llm, load_pipeline_config, read_jsonl, write_progress
 
 
 PROMPT = """\
-以下是 {date} 这一天关于「{event}」的 {n} 条社交媒体摘要。
-很多帖子在重复讨论相同的事情，请你：
 
-1. 找出哪些包含独特的新信息或独特的舆论视角（而不是重复其他条已有的内容）
-2. 返回应该保留的编号，格式：保留：1,3,5
-3. 如果全都重复，选最完整的 2-3 条
-4. 只返回"保留：x,x,x"这一行，不要其他内容
+Below are {n} social media summaries about “{event}” from {date}.
+Many posts discuss the same things repeatedly. Please:
+
+1. Identify which items contain unique new information or distinct perspectives on public opinion \
+(rather than repeating content already covered in other items).
+2. Return the numbers that should be kept; format: Keep: 1,3,5
+3. If they’re all duplicates, choose the 2–3 most complete entries.
+4. Return only the line "Keep: x,x,x" and nothing else.
 
 {items_text}
 """
@@ -129,7 +131,7 @@ def process_date(
         counter["done"] += 1
         done = counter["done"]
     pct = done / total_dates * 100 if total_dates else 0
-    log(f"[{done}/{total_dates}] ({pct:.1f}%) {date}: {len(items)}条 → {len(kept)}条", log_path)
+    log(f"[{done}/{total_dates}] ({pct:.1f}%) {date}: {len(items)} Articles → {len(kept)} Articles", log_path)
 
 
 def main() -> None:
@@ -149,7 +151,7 @@ def main() -> None:
     items_all: List[Dict[str, Any]] = []
     for r in rows:
         summary = (r.get("summary_clean") or r.get("summary") or "").strip()
-        if summary in ("不相关", "清洗失败", ""):
+        if summary in ("Irrelevant", "Cleaning failed", ""):
             continue
         items_all.append(r)
 

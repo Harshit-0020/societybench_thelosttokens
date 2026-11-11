@@ -3,7 +3,7 @@
 
 For each post (with its top comments from step0), produce a 100-200 char
 Chinese summary covering both the post content and the dominant opinion in the
-comments. Irrelevant ones → "不相关".
+comments. Irrelevant ones → "Irrelevant".
 
 8 threads, resume by id, reasoning_effort="none".
 """
@@ -20,19 +20,24 @@ from typing import Any, Dict, List, Set
 from common import call_llm, load_pipeline_config, read_jsonl, write_progress
 
 
-PLATFORM_CN = {
-    "douyin": "抖音", "weibo": "微博", "zhihu": "知乎",
-    "bili": "B站", "tieba": "贴吧", "xhs": "小红书", "ks": "快手",
+PLATFORMS_EN = {
+    "Reddit": "reddit", "bluesky": "bluesky"
 }
 
 PROMPT = """\
-请根据以下社交媒体帖子及其评论，用 100-200 字概括这条帖子在讨论什么，反映了什么舆论观点或事件进展。
+Based on the social media post and its comments provided below, \
+please summarize—in 100–200 words — the subject of the discussion, \
+the public opinions expressed, and any developments regarding the event in question.
 
-要求：
-- 先概括帖子本身在说什么，再综合评论区的主要观点和情绪
-- 直接叙述，禁止出现"摘要""本文""该帖子""这条微博"等元语言
-- 如果内容跟「{event}」无关，只回复三个字：不相关
-- 直接从内容开始写，不要任何前缀
+
+
+Requirements:
+- First, summarize the content of the post itself, \
+then synthesize the key viewpoints and emotions expressed in the comments section.
+- Present the content directly; do not use meta-language \
+such as "abstract," "this article," "this post," or "this Weibo."
+- If the content is unrelated to ⌈{event}⌋, reply with only these two words: "Not related"
+- Start writing directly from the content; do not include any prefixes.
 
 {post_block}
 {comments_block}
@@ -70,7 +75,7 @@ def load_existing(out_path: Path) -> Set[str]:
 
 
 def build_prompt(post: Dict[str, Any], event_name: str) -> str:
-    platform = PLATFORM_CN.get(post.get("platform"), post.get("platform", ""))
+    platform = PLATFORMS_EN.get(post.get("platform"), post.get("platform", ""))
     title = (post.get("title") or "").strip()
     content = (post.get("content") or "").strip()
     user_name = post.get("user_name", "")
@@ -80,10 +85,10 @@ def build_prompt(post: Dict[str, Any], event_name: str) -> str:
 
     parts: List[str] = []
     if title:
-        parts.append(f"标题：{title}")
+        parts.append(f"Title: {title}")
     if content and content != title:
-        parts.append(f"正文：{content[:1500]}")
-    parts.append(f"发布者：{user_name} | 平台：{platform} | 日期：{date} | 点赞：{liked} | 评论数：{cn}")
+        parts.append(f"Text: {content[:1500]}")
+    parts.append(f"Publisher: {user_name} | Platform: {platform} | Date: {date} | Likes: {liked} | Number of comments: {cn}")
     post_block = "\n".join(parts)
 
     top = post.get("top_comments", []) or []
@@ -95,8 +100,8 @@ def build_prompt(post: Dict[str, Any], event_name: str) -> str:
         elif isinstance(c, dict):
             txt = (c.get("content") or "").strip()
             if txt:
-                norm_comments.append(f"[赞{c.get('liked_count', 0)}] {txt}")
-    comments_block = ("\n\n热门评论:\n" + "\n".join(norm_comments)) if norm_comments else ""
+                norm_comments.append(f"Likes {c.get('liked_count', 0)}] {txt}")
+    comments_block = ("\n\nPopular comments:\n" + "\n".join(norm_comments)) if norm_comments else ""
 
     return PROMPT.format(event=event_name, post_block=post_block, comments_block=comments_block)
 
@@ -119,10 +124,10 @@ def process_one(post: Dict[str, Any], event_name: str, model: str,
                 out_path: Path, log_path: Path,
                 counter: Dict[str, int], total: int) -> None:
     summary = summarize_one(post, event_name, model)
-    # If LLM returned an error sentinel, normalize to SKILL's "摘要生成失败"
+    # If LLM returned an error sentinel, normalize to SKILL's "Summary generation failed"
     # so downstream (media-step2) can detect via simple string match per SKILL.
     if summary.startswith("[summarize_error]"):
-        summary = "摘要生成失败"
+        summary = "Summary generation failed"
     row = {
         "id": post["id"],
         "platform": post.get("platform"),
@@ -141,7 +146,7 @@ def process_one(post: Dict[str, Any], event_name: str, model: str,
         counter["done"] += 1
         done = counter["done"]
     pct = done / total * 100 if total else 0
-    tag = "不相关" if summary == "不相关" else summary[:40]
+    tag = "Irrelevant" if summary == "Irrelevant" else summary[:40]
     log(f"[{done}/{total}] ({pct:.1f}%) {post.get('platform','')}|{post.get('date','')} | {tag}", log_path)
 
 

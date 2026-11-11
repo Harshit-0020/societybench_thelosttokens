@@ -7,7 +7,7 @@ LLM is fine. Model configurable via `--model` / pipeline_config.default_llm_mode
 
 Pipeline (mirror of web-step5 but for the media side):
   1. Filter step4 rows by `new_info` noise patterns
-  2. LLM re-judges "假新进展" (fake new progress) and compresses to 1-2
+  2. LLM re-judges "Fake new developments" (fake new progress) and compresses to 1-2
      sentences (~50-100 chars)
   3. Group survivors by Stage (from step0 stage tags) and date, write
      `media_timeline_short.md` with `[ID: platform_xxx]` markers preserved
@@ -27,19 +27,25 @@ from typing import Any, Dict, List, Optional
 from common import call_llm, load_pipeline_config, parse_date_obj, read_jsonl
 
 
-NOISE_PATTERNS = [r"^无新进展$", r"^提取失败", r"^\[.*error", r"^N/A$"]
+NOISE_PATTERNS = [r"^No new developments$", r"^Extraction failed", r"^\[.*error", r"^N/A$"]
 
 PROMPT = """\
-请二次判断下面这条已被标为"有新进展"的社媒信息，并按需精炼：
+Please reassess the following social media post, \
+which has already been labeled "New Developments" \
+and refine it as needed:
 
-- 是不是真的有 {date} 前后新发生的事情（不是回顾、不是评论、不是情绪、不是事件背景）？
-- 如果真有，用 1-2 句话精炼写出新进展核心，约 50-100 字
-- 如果其实是旧事 / 纯情绪 / 纯吐槽 / 纯梗图讨论，只输出：假新进展
+- Did anything actually happen around {date}?\
+(not a recap, commentary, emotional reactions, or background on the event)
+- If there are any genuine new developments, summarize the key points \
+concisely in 1–2 sentences, about 50–100 characters.
+- If it’s actually old news / just feelings / just venting / just a discussion of memes,\
+ output only: Fake new developments
 
-只输出精炼版或"假新进展"，不要任何额外说明。
+Output only a concise version or "Fake new developments"; \
+do not include any additional explanations.
 
-发布日期：{date}
-new_info：{new_info}
+Publication date: {date}
+new_info： {new_info}
 """
 
 WRITE_LOCK = threading.Lock()
@@ -59,7 +65,7 @@ def is_noise(s: str) -> bool:
     s = (s or "").strip()
     if not s:
         return True
-    if "无新进展" in s or "提取失败" in s:
+    if "No new developments" in s or "Extraction failed" in s:
         return True
     return any(re.search(p, s, flags=re.I) for p in NOISE_PATTERNS)
 
@@ -85,11 +91,11 @@ def stage_for(item: Dict[str, Any], stages: List[Dict[str, Any]]) -> str:
         return s
     d = parse_date_obj(item.get("date"))
     if d is None or not stages:
-        return "未分阶段"
+        return "Unstaged"
     for s in stages:
         if s["start"] and s["end"] and s["start"] <= d <= s["end"]:
             return s["name"]
-    return "未分阶段"
+    return "Unstaged"
 
 
 def shrink_one(date: str, new_info: str, model: str) -> str:
@@ -175,10 +181,10 @@ def main() -> None:
     # SKILL §output format: stage header with date range, bullets with **date**
     # inline and [ID:] at the END (NOT a separate ### date heading).
     title_prefix = (args.event_name + " — ") if args.event_name else ""
-    lines = [f"# {title_prefix}社媒数据 Timeline（短版）", ""]
+    lines = [f"# {title_prefix}Social media data Timeline(Short version)", ""]
     stage_order = [s.get("name") for s in stages] if stages else list(groups.keys())
     seen = set()
-    for stage in list(stage_order) + ["未分阶段"]:
+    for stage in list(stage_order) + ["Unstaged"]:
         if stage in seen or stage not in groups:
             continue
         seen.add(stage)

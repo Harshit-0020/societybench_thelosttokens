@@ -400,7 +400,7 @@ def run_point(
         print(f"  ⚠️ {pid} density check weak: total_90d={len(events)} "
               f"seg=[{seg_counts[0]},{seg_counts[1]},{seg_counts[2]}] — "
               "scoring will still run; consider rerunning Step 2 with denser events.all "
-              "(SKILL §3F 密度自检 says: don't fabricate events, but Step 2 should aim ≥5 / "
+              "(SKILL §3F Density self-test says: don't fabricate events, but Step 2 should aim ≥5 / "
               "all 3 segments non-empty).")
 
     context = ctx_path.read_text(encoding="utf-8") if ctx_path.exists() else ""
@@ -440,7 +440,7 @@ def run_point(
             attempt += 1
             if attempt > 1:
                 print(f"  {model} / {pid} run{run_idx+1} attempt {attempt}: "
-                      f"等待 {RETRY_WAIT_SECONDS}s 后重问 {len(missing)} 个未给日期事件 ...", flush=True)
+                      f"wait {RETRY_WAIT_SECONDS}s Ask again later{len(missing)} An undated event...", flush=True)
                 time.sleep(RETRY_WAIT_SECONDS)
             sub_idx = sorted(missing)
             sub_events = [events[i] for i in sub_idx]
@@ -450,7 +450,7 @@ def run_point(
             except Exception as e:  # request failure (incl. quota): accounted separately from "model gave no date"
                 sub_dates = {}
                 kind = f"request_error:{str(e)[:120]}"
-                print(f"  {model} / {pid} run{run_idx+1} attempt {attempt} 请求失效({len(sub_events)}): {e}", flush=True)
+                print(f"  {model} / {pid} run{run_idx+1} attempt {attempt} Request expired ({len(sub_events)}): {e}", flush=True)
             n_got = 0
             for pos, orig in enumerate(sub_idx, start=1):
                 ds = sub_dates.get(str(pos))
@@ -465,7 +465,7 @@ def run_point(
                 "run": run_idx + 1, "attempt": attempt, "asked": len(sub_idx),
                 "answered": n_got, "still_missing": len(missing), "request_error": 1 if kind else 0,
             })
-            print(f"  {model} / {pid} run{run_idx+1} attempt {attempt}: 拿到 {n_got}/{len(sub_idx)}, 仍缺 {len(missing)}", flush=True)
+            print(f"  {model} / {pid} run{run_idx+1} attempt {attempt}: got it {n_got}/{len(sub_idx)}, Still missing {len(missing)}", flush=True)
         # v3: classify failed events (dmx=request_error/quota / model=parse_fail); no midpoint fill into the primary score
         fail_kinds: List[Optional[str]] = [None] * n_ev
         for i in missing:
@@ -474,8 +474,9 @@ def run_point(
         n_dmx = sum(1 for i in missing if fail_kinds[i] == "dmx")
         n_model = sum(1 for i in missing if fail_kinds[i] == "model")
         if missing:
-            print(f"  {model} / {pid} run{run_idx+1} 重试后 {len(missing)} 事件无日期 → 标无效"
-                  f"(dmx={n_dmx}, model={n_model};主分排除、副分填中点)", flush=True)
+            # 事件无日期 → 标无效 --> Event has no date → Mark as invalid
+            print(f"  {model} / {pid} run{run_idx+1} After retrying {len(missing)} Event has no date → Mark as invalid"
+                  f"(dmx={n_dmx}, model={n_model};Do not count the primary score; fill in the secondary score.)", flush=True)
         # Primary score: feed only the real answered dates
         answered_map = {str(i + 1): pred_dates[i] for i in range(n_ev) if pred_dates[i]}
         scoring_ans = score_events(events, answered_map)
@@ -639,8 +640,8 @@ V2_FINALSCORE_META = {
     "name": "v2_finalscore", "adopted": "2026-07-06", "axis": "time(3F)", "role": "primary_display_score",
     "formula": "100*(1 - weighted_mean(norm_err));  norm_err = span([d-err,d+err] ∩ [seg_lo,seg_hi]) / 30",
     "denominator": 30, "clip_to_window": True, "perfect_equals_zero": True,
-    "time_weight": "1/(1+0.04*delta_days)  (与旧f/与b时间权重同)",
-    "note": "误差归一化[0,1]、线性、与b轴同族;band以真值为心半径=差天数裁进窗口(贴墙打折);完美=满分。旧pooled.score_100(双曲)保留。",
+    "time_weight": "1/(1+0.04*delta_days)  ((Same time-weighting as for the old f/b)",
+    "note": "Error normalization [0,1], linearity, the same family as the b-axis; band takes the true value as the center radius = the number of days difference cut into the window (discount on the wall); perfect = full score.Old pooled.score_100 (hyperbolic) reserved.",
 }
 
 

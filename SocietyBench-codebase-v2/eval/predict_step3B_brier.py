@@ -170,8 +170,12 @@ def render_question(q: Dict[str, Any]) -> str:
     if LANG == "en":
         wd = q.get("window_days", 14)
         return f"Event: {body}  Target window: [within {wd} days before {d_target}]"
-    window = q.get("time_window") or f"{q.get('window_days', 14)}天"
-    return f"事件：{body}  目标日期窗口：[{d_target} 前 {window} 内]"
+    window = q.get("time_window") or f"{q.get('window_days', 14)} day"
+    # 事件：--> event：
+    # 目标日期窗口：--> Target date window：
+    # 前 --> before
+    # 内 --> inside
+    return f"event：{body}  Target date window：[{d_target} before {window} inside]"
 
 
 def model_slug(model: str) -> str:
@@ -806,8 +810,10 @@ def run_point(
             if not any((last_fail_kind[i] or "").startswith("request_error") for i in missing):
                 break  # 3 full rounds done and no DMX questions → stop (no 4th round)
         if genuine_attempt > 0 or quota_waits > 0:
-            print(f"  {model} / {pid} 等待 {RETRY_WAIT_SECONDS}s 后重问 {len(missing)} 题 "
-                  f"(真·尝试 {genuine_attempt}/{MAX_ANSWER_ATTEMPTS}, quota等待 {quota_waits}) ...", flush=True)
+            # 等待 --> wait
+
+            print(f"  {model} / {pid} wait {RETRY_WAIT_SECONDS}s Ask again later {len(missing)} question"
+                  f"(A genuine attempt {genuine_attempt}/{MAX_ANSWER_ATTEMPTS}, quotawait {quota_waits}) ...", flush=True)
             time.sleep(RETRY_WAIT_SECONDS)
         sub_items = [(i, questions[i]) for i in sorted(missing)]
         sub_batches = build_batches(sub_items, pid, batch_size, same_group)
@@ -827,7 +833,7 @@ def run_point(
                 with result_lock:
                     for orig, _q in batch:
                         fail_kind[orig] = f"request_error:{str(e)[:120]}"
-                print(f"  {model} / {pid} 请求失效({len(batch)}题): {e}", flush=True)
+                print(f"  {model} / {pid} Request expired ({len(batch)} Question): {e}", flush=True)
                 return
             with result_lock:
                 for pos, (orig, _q) in enumerate(batch, start=1):
@@ -847,7 +853,7 @@ def run_point(
             quota_waits += 1
             for orig in missing:
                 last_fail_kind[orig] = "quota_no_balance"
-            print(f"  {model} / {pid} ⚠️整轮无余额(quota)→ 不计重试,稍后重试(第 {quota_waits}/{MAX_QUOTA_WAITS} 次)", flush=True)
+            print(f"  {model} / {pid} ⚠️No balance for the entire round (quota) → retry not counted; try again later (round {quota_waits}/{MAX_QUOTA_WAITS} next)", flush=True)
             continue
         genuine_attempt += 1
         quota_waits = 0
@@ -865,8 +871,9 @@ def run_point(
             "answered": len(got), "still_missing": len(missing),
             "parse_fail": n_parse, "request_error": n_req_err, "quota_skipped": n_quota,
         })
-        print(f"  {model} / {pid} 真·尝试 {genuine_attempt}: 拿到 {len(got)}/{len(sub_items)}, "
-              f"仍缺 {len(missing)} (parse_fail={n_parse}, request_error={n_req_err})", flush=True)
+        # 真·尝试 --> A genuine attempt
+        print(f"  {model} / {pid} A genuine attempt {genuine_attempt}: got it {len(got)}/{len(sub_items)}, "
+              f"Still missing {len(missing)} (parse_fail={n_parse}, request_error={n_req_err})", flush=True)
 
     # ---- Still missing after 4 rounds → mark all invalid (v3: no default fill, excluded from primary score); classified by last failure reason (fixed by user 2026-07-02) ----
     # dmx = request_error/quota (upstream failure / out of money); model = parse_fail (model gave no answer / refused).
@@ -878,8 +885,8 @@ def run_point(
     n_dmx_fail = sum(1 for i in missing if fail_kinds[i] == "dmx")
     n_model_fail = sum(1 for i in missing if fail_kinds[i] == "model")
     if missing:
-        print(f"  {model} / {pid} 重试后 {len(missing)} 题无答案 → 标无效排除"
-              f"(dmx={n_dmx_fail}, model={n_model_fail};主分不算、副分填{DEFAULT_FALLBACK_PROB})", flush=True)
+        print(f"  {model} / {pid} After retrying {len(missing)} Question has no answer → mark as invalid and exclude"
+              f"(dmx={n_dmx_fail}, model={n_model_fail};Do not count the primary score; fill in the secondary score. {DEFAULT_FALLBACK_PROB})", flush=True)
 
     cutoff_d = parse_date_obj(cutoff)
     enriched: List[Dict[str, Any]] = []

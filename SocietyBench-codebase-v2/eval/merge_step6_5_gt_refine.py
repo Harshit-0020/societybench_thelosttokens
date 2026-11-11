@@ -33,26 +33,27 @@ from common import call_llm, load_pipeline_config
 
 
 REFINE_PROMPT = """\
-请将下面这段事件叙述改写成 200-300 字的预测专用 GT 段落：
+Rewrite the following event narrative into a 200–300-character paragraph specifically for prediction GT:
 
-硬性要求：
-1. 句首必须落在事实锚点（"谁在何时做了什么"），不能从 And/But/While/When/As/Though 等连接词或半截从句开头
-2. 删除标题壳、栏目、电头、署名（如 "-新华网"、"北京X月X日电"、"综合消息"、"据XX报道"、"法新社）"）
-3. 删除门户残片（"查看详情""阅读时间""要点""问AI"）、链接、URL、引号残片、markdown
-4. 保留 1-3 个互补事实句，整体压在 200-300 字
-5. 不允许凭记忆补事实；只能用给定原文中的信息
-6. 禁止"摘要""本文""该报道"等元语言
+Strict requirements:
+1. The paragraph must begin with a factual anchor (who did what and when). It must not start with conjunctions such as "And", "But", "While", "When", "As", "Though", etc., or with an incomplete subordinate clause.
+2. Remove headline wrappers, section labels, datelines, and bylines (e.g., "- Xinhua News", "Beijing, [Month] [Day] (News)", "News Roundup", "According to [source]", "Agence France-Presse").
+3. Remove portal artifacts ("View Details", "Reading Time", "Key Points", "Ask AI"), links, URLs, quotation fragments, and Markdown formatting.
+4. Retain 1–3 complementary factual sentences, keeping the total length between 200 and 300 characters.
+5. Do not add facts from memory; use only information provided in the original text.
+6. Do not use meta-language such as "Summary", "this article", or "this report".
 
-只输出改写后的段落，不要任何额外说明。
+Output only the rewritten paragraph, without any additional explanation.
 
-原文：
+Original text:
 {body}
 """
-
+# 事件 --> Event
+# 舆论 --> Public Opinion
 DATE_RE = re.compile(r"^###\s+(\d{4}-\d{2}-\d{2})")
 STAGE_RE = re.compile(r"^##\s+(.+)$")
-EVENT_PREFIX = re.compile(r"^\*\*事件\*\*[:：]\s*")
-OPINION_PREFIX = re.compile(r"^\*\*舆论\*\*[:：]\s*")
+EVENT_PREFIX = re.compile(r"^\*\*Event\*\*[:：]\s*")
+OPINION_PREFIX = re.compile(r"^\*\*Public Opinion\*\*[:：]\s*")
 
 JUNK_PATTERNS = [
     r"^\s*(And|But|While|When|As|Though|However)\b",
@@ -63,7 +64,7 @@ TITLE_SHELL_PATTERNS = [
     r"-(新华网|腾讯新闻|中国新闻网|凤凰网|新华社|央视新闻|人民日报)",
     r"(综合消息|据[^，。\n]{2,8}报道)",
     r"法新社[）)]",
-    r"\b(北京|华盛顿|德黑兰|纽约|伦敦)\s*\d+\s*月\s*\d+\s*日电",
+    r"\b(北京|华盛顿|德黑兰|纽约|伦敦)\s*\d+\s*月\s*\d+\s*日电",    
     r"\b(查看详情|阅读时间|要点|问AI)\b",
 ]
 JUNK_ANY_PATTERNS = [r"https?://\S+", r"ref_(src|url)=", r"granuleid:"]
@@ -152,7 +153,8 @@ def date_bundle_repair(short_body: str, date_str: str, fallback_idx: Dict[str, L
     if not bodies:
         return short_body, False
     bundle = "\n\n---\n\n".join(bodies[:3])
-    prompt = REFINE_PROMPT.format(body=(short_body + "\n\n[同日全文候选源]\n" + bundle)[:8000])
+    # 同日全文候选源 --> Full-Text Candidate Sources for the Same Day
+    prompt = REFINE_PROMPT.format(body=(short_body + "\n\n[Full-Text Candidate Sources for the Same Day]\n" + bundle)[:8000])
     try:
         raw = call_llm(
             [{"role": "user", "content": prompt}],
@@ -257,8 +259,13 @@ def main() -> None:
         mode_used = "primary"
         selected_source = "merged_long_event"
         if any(t.startswith(("gt_below_min", "gt_above_max", "bad_start", "title_shell")) for t in tags):
+            
+            # 请将句首改为事实锚点 → Please make the sentence begin with a factual anchor
+            # 并把长度控制在 200-300 字 → Keep the length between 200 and 300 characters
+            # 删除标题壳/电头/链接/署名残片 → Remove headline wrappers, datelines, links, and byline fragments
+
             refined = refine_body(
-                refined + "\n\n（请将句首改为事实锚点，并把长度控制在 200-300 字，删除标题壳/电头/链接/署名残片。）",
+                refined + "\n\n(Please make the sentence begin with a factual anchor, keep the length between 200 and 300 characters, and remove headline wrappers, datelines, links, and byline fragments.)",
                 args.event_name, model,
             )
             tags = hard_fail_tags(refined)
@@ -314,8 +321,8 @@ def main() -> None:
             curr = sec.get("refined_event") or ""
             # Stronger prompt: emphasize fact-anchor at sentence start + 200-300 chars
             redo = refine_body(
-                curr + "\n\n（这是主干高影响节点。请彻底重写：句首必须是事实锚点（谁/何时/做了什么），"
-                       "删干净任何标题壳、电头、链接残片、引语残片；最终长度 200-300 字，不允许低于 200。）",
+                curr + "\n\n（This is a high-impact core event node. Rewrite it completely: the opening must be a factual anchor (who did what and when);"
+                       "remove all headline wrappers, datelines, link fragments, and quotation fragments; the final length must be 200–300 characters and must not be shorter than 200.）",
                 args.event_name, model,
             )
             tags = hard_fail_tags(redo)
@@ -352,8 +359,7 @@ def main() -> None:
             curr = sec.get("refined_event") or ""
             # Milder prompt for the residual edge cases
             redo = refine_body(
-                curr + "\n\n（这是软边界节点。请做最小化清理：去掉残留的标题壳/引语半句/链接，"
-                       "保持事实意思不变，最终落在 200-300 字。）",
+                curr + "\n\n(This is a soft-boundary node. Perform minimal cleanup: remove any remaining headline wrappers, incomplete quotation fragments, and links; preserve the original factual meaning, and keep the final length between 200 and 300 characters.)",
                 args.event_name, model,
             )
             sec["refined_event"] = redo
@@ -370,7 +376,7 @@ def main() -> None:
         log(f"Round 3 done: revised {len(round3_targets)} nodes", log_path)
 
     # Build refined GT markdown
-    out_lines: List[str] = [f"# {args.event_name} — 长版预测 GT（Round 1+2+3 refined）", ""]
+    out_lines: List[str] = [f"# {args.event_name} — Long-Form Prediction GT（Round 1+2+3 refined）", ""]
     stage_seen: List[str] = []
     for sec in sections:
         if sec.get("refined_event") is None:
@@ -379,10 +385,10 @@ def main() -> None:
             stage_seen.append(sec["stage"])
             out_lines.append(f"## {sec['stage']}\n")
         out_lines.append(f"### {sec['date']}\n")
-        out_lines.append(f"**事件**：{sec['refined_event']}")
+        out_lines.append(f"**Event**: {sec['refined_event']}")
         out_lines.append("")
         if sec["opinion"]:
-            out_lines.append(f"**舆论**：{' '.join(sec['opinion'])}")
+            out_lines.append(f"**Public Opinion**: {' '.join(sec['opinion'])}")
             out_lines.append("")
 
     gt_md_path = out_dir / "timeline_merged_long_gt.md"
@@ -427,36 +433,46 @@ def main() -> None:
         log_lines.append("\n---\n")
     log_lines.append(f"# GT refine iteration log — {args.event_name}\n")
     log_lines.append(f"## Round 1 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    log_lines.append(f"- baseline 自动生成完成：{len(sections)} 个节点，{report['kept']} 通过初步校验，{report['failed']} 仍命中硬失败")
-    log_lines.append("- 进入 Round 2 主干修订前，请人工抽查以下硬失败节点：")
+
+    # 自动生成完成 → Generation completed automatically
+    # 个节点 → Nodes
+    # 通过初步校验 → Passed initial validation
+    # 仍命中硬失败 → Still triggered hard-failure checks
+        
+    log_lines.append(f"- Baseline generation completed automatically: {len(sections)} nodes, {report['kept']} passed initial validation, {report['failed']} still triggered hard-failure checks")
+    
+    # 进入 Round 2 主干修订前 → Before proceeding to the Round 2 core revisions
+    # 请人工抽查以下硬失败节点 → Manually review the following hard-failure nodes
+    log_lines.append("- Before proceeding to the Round 2 core revisions, manually review the following hard-failure nodes:")
     bad = [n for n in report_nodes if not n.get("passed")]
     for n in bad[:25]:
         log_lines.append(f"  - {n['date']} — tags={n['hard_fail_tags']}")
     if len(bad) > 25:
-        log_lines.append(f"  - …还有 {len(bad) - 25} 个 (详见 timeline_merged_long_gt_report.json)")
+        log_lines.append(f"  - ...and {len(bad) - 25} more (see timeline_merged_long_gt_report.json)")
     log_lines.append("")
     if args.max_rounds >= 2:
         n_r2 = sum(1 for s in sections if s.get("round2_applied"))
-        log_lines.append(f"## Round 2 — 主干修订（自动，{n_r2} 个节点重写）")
-        log_lines.append("- 用同一 LLM API 对 Round 1 中 hard_fail_tags 含 title_shell/bad_start/gt_below_min 的节点强力重写")
+        log_lines.append(f"## Round 2 — Core Revisions (Automatic, {n_r2} Nodes Rewritten)")
+        log_lines.append("- Use the same LLM API to aggressively rewrite nodes from Round 1 whose hard_fail_tags contain title_shell/bad_start/gt_below_min")
         log_lines.append("")
     else:
-        log_lines.append("## Round 2 — 跳过（--max-rounds < 2）\n")
+        # 跳过 → Skipped
+        log_lines.append("## Round 2 — Skipped (--max-rounds < 2)\n")
 
     if args.max_rounds >= 3:
         n_r3 = sum(1 for s in sections if s.get("round3_applied"))
-        log_lines.append(f"## Round 3 — 边界收口（自动，{n_r3} 个节点温和重写）")
-        log_lines.append("- 对 Round 2 后仍命中硬失败的软边界节点做最小化清理")
+        log_lines.append(f"## Round 3 — Boundary Finalization (Automatic, {n_r3} Nodes Gently Rewritten)")
+        log_lines.append("- Perform minimal cleanup on soft-boundary nodes that still trigger hard-failure checks after Round 2")
         log_lines.append("")
     else:
-        log_lines.append("## Round 3 — 跳过（--max-rounds < 3）\n")
+        log_lines.append("## Round 3 — Skipped（--max-rounds < 3）\n")
 
-    log_lines.append("## 最终结论（自动跑完三轮后人工审核位）")
-    log_lines.append("最终人工审核结论（必填，否则 predict-pipeline Step -1 会拒绝放行）：")
-    log_lines.append("- 候选结论：")
-    log_lines.append("  - `人工审核通过，可进入 predict`")
-    log_lines.append("  - `人工审核未通过，继续修订`")
-    log_lines.append("  - `人工审核未通过，存在外部硬阻塞`")
+    log_lines.append("## Final Conclusion (Human Review Section After All Three Automated Rounds)")
+    log_lines.append("Final Human Review Decision (required; otherwise predict-pipeline Step -1 will reject execution):")
+    log_lines.append("- Candidate decisions:")
+    log_lines.append("  - `Human review approved, proceed to predict`")
+    log_lines.append("  - `Human review not approved; continue revisions`")
+    log_lines.append("  - `Human review not approved; external blocking issue exists`")
     log_lines.append("")
     log_md.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
 
@@ -467,7 +483,7 @@ def main() -> None:
         "gt_md": str(gt_md_path),
         "report_json": str(out_dir / "timeline_merged_long_gt_report.json"),
         "iteration_log": str(log_md),
-        "note": "Round 1 only — Rounds 2/3 + 人工审稿 must be completed manually before predict",
+        "note": "Round 1 only — Rounds 2/3 + manual review must be completed before predict",
     }, ensure_ascii=False, indent=2))
 
 

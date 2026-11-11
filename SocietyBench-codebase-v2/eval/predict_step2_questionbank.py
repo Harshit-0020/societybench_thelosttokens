@@ -155,7 +155,7 @@ def _call_with_fallback(messages: List[Dict[str, str]], *, model: str, **kwargs)
     try:
         return call_llm(messages, model=model, **kwargs)
     except Exception as e:
-        print(f"  [fallback] 主模型 {model} 失败({str(e)[:60]}) → 切备用 {FALLBACK_MODEL}", flush=True)
+        print(f"  [fallback] Main Model {model} failed({str(e)[:60]}) → Cut and set aside {FALLBACK_MODEL}", flush=True)
         return call_llm(messages, model=FALLBACK_MODEL, **kwargs)
 
 
@@ -189,84 +189,80 @@ def target_total(base_event_count: int, remaining_points: int, gt_nodes: int,
 # LLM prompts (SKILL §Step 2.1 + §Step 2.2)
 # ===========================================================================
 
-PROMPT_EVENTS = """你是评测出题助手。事件「{event}」截至日期 {cutoff}。
-下面是该事件在 {cutoff} **之后**的 ground-truth 时间线（GT）。请从中提取**紧凑真实事件集**用于 3F 时间预测：
+PROMPT_EVENTS = """You are an assistant that evaluates questions. The deadline for the event “{event}” is {cutoff}.
+The following is the ground-truth timeline (GT) for the event after {cutoff} **. Please extract a compact set of real events** for 3F time prediction:
 
-紧凑事件集的要求：
-- 每个事件必须可公开验证、可定位时间、可单独评分
-- 不机械覆盖每个日期节点，只保留**值得进入时间预测的高置信事实推进**（政策动作、官方表态、谈判/协议、调查/裁决、执行/暂停、明确舆情转折）
-- 排除：解释稿/评论/FAQ/直播滚动/聚合页/纯外围影响分析
-- **禁止**把一个真实事件拆成多条、机械换词、同义改写
-- 默认每个高价值日期 1 条；确有必要再补 1 条独立新事件
-- event_desc 必须做泛化改写：去具体人名机构名、数字模糊化、引语改写
+Requirements for compact event sets:
+- Each event must be publicly verifiable, have a pinpointable date, and be individually scoreable.
+- Do not mechanically include every date in the timeline; retain only high-confidence facts worth including in a time forecast to move things forward (policy actions, official statements, negotiations or agreements, investigations or rulings, enforcement or suspensions, and clear turning points in public opinion).
+- Exclude explanatory notes, comments, FAQs, live feeds, aggregated pages, and analyses of purely peripheral impacts.
+- **Do not split a real event into multiple parts, mechanically change the wording, or rewrite it using synonyms.**
+- By default, include one event per high-value date; add one independent new event only if genuinely necessary.
+- event_desc must be generalized and rewritten: specify the organization’s name, obscure the number, and paraphrase any quotation.
 
 ================ GT ================
 {gt_text}
 ================
 
-**输出**：严格 JSON 数组，每条字段：
-  id        (字符串，自增编号 E01/E02/...)
-  event     (中文一句话泛化描述，不带具体日期)
-  date      (YYYY-MM-DD)
-  group     (整数，同日同主题取相同 group)
-  days_from_cutoff (整数 = date - cutoff)
+**Output**: A strict JSON array with the following fields:
+  id (string, sequential numbering: E01/E02/...)
+  event (one-sentence generalized description in Chinese, without a specific date)
+  date (YYYY-MM-DD)
+  group (integer; use the same group for the same subject on the same day)
+  days_from_cutoff (integer = date − cutoff)
 
-不要带 markdown 代码块、不要额外说明。
+Do not include Markdown code fences or any additional text.
 """
 
 
-PROMPT_BRIER = """你是评测出题助手。事件「{event}」截至日期 {cutoff}。
-基于以下 events.all（紧凑真实事件集），生成 **恰好 {n_questions} 道** brier 概率题。
+PROMPT_BRIER = """You are an evaluation-question generation assistant. The event is “{event}”; cutoff date: {cutoff}.
+Based on the following events.all (a compact set of real events), generate **exactly {n_questions}** Brier probability questions.
 
 ================ events.all ================
 {events_json}
 ================
 
-题型结构目标 A:B:C:D = 4:2:1:3（数量占比的目标参考，非硬约束）：
-- A 时间梯度题：每个真实事件 1 道真窗口题（answer=1），可选补 1 道短窗口假题（answer=0）
-- B 确定性梯度题：泛化层级差异明确的真题；测方向与粒度
-- C 结果变种题：补位题型，作为结构补齐使用
-- D 高迷惑假题：每个 fake event 只出 1 道，看起来可能但 GT 中实际未发生
+Target question-type distribution A:B:C:D = 4:2:1:3 (a reference target for proportions, not a hard constraint):
+- A Time-gradient questions: 1 true-window question (answer=1) per real event; optionally add 1 short-window false question (answer=0)
+- B Certainty-gradient questions: true questions with clear differences in level of generality; test direction and granularity
+- C Outcome-variant questions: supplemental question type, used to fill out the distribution
+- D Highly deceptive false questions: only 1 per fake event; plausible-looking but did not actually occur in the ground truth
 
-**可预测粒度铁律（关键，决定题目质量与区分度）**：
-- 题干只问**方向性/结构性的转折是否发生**（如"公司是否被退市""是否启动内部调查""是否被起诉""是否
-  更换审计机构"），**禁止把只有事后才知道的细节写进题干**——具体措辞、具体数字、具体表态
-  （如"称未发现欺诈""表示有信心满足要求""营收增速低于预告区间下限"）一律剥掉：cutoff 时的预测者
-  无法预判这些细节，写进去就把题变成"测运气"而非"测预测力"。
-- **禁止"同时 A 并且 B"的复合条件**（两个具体一起命中更难、更不可预测）；一题只问一个结构性结果。
-- 自检标准：一个站在 cutoff 时点的高水平预测者，**有没有可能合理预判这个结果的"方向"**？
-  若否（太细 / 复合 / 仅事后可知）→ 抽象改写到可预判粒度，或弃用。
+**Predictable-granularity rule (critical; determines question quality and discriminative power):**
+- The question should ask only whether a **directional or structural turning point occurred** (e.g., “Was the company delisted?” “Was an internal investigation launched?” “Was the company sued?” “Did it change auditors?”). **Do not include details that could only be known after the fact in the question**—specific wording, figures, or statements (e.g., “said it found no fraud,” “expressed confidence that it would meet requirements,” “revenue growth fell below the bottom of the forecast range”) must all be stripped out. A forecaster at the cutoff could not predict these details; including them turns the question into a test of luck rather than forecasting skill.
+- **Do not use compound conditions such as “both A and B”** (hitting two specific outcomes is harder and less predictable); each question should ask about only one structural outcome.
+- Self-check: Could a skilled forecaster at the cutoff have reasonably predicted the **direction** of this outcome? If not (too detailed, compound, or only knowable after the fact), abstract it to a predictable level of granularity or discard it.
 
-D 类规则（必须）：
-1) 每条 D 必须独一无二，禁止"第 N 项"模板填充
-2) 与 events.all 任何事件关键短语（≥3 字 / ≥3 词）重叠 ≥ 3 → 拒绝
-3) 禁词（"过于离谱、无区分度"清单 — 配置驱动，下面是当前生效项）：{blacklist_terms}
-4) 不可证伪关键词禁用（私下行为 / 内心状态等公开信息源无法记录的内容）：{unfalsifiable_terms}
-5) 描述必须可被公开信息源（新闻/社媒）记录到
+D-category rules (required):
+1) Every D question must be unique; do not fill them using “Item N” templates.
+2) If it overlaps with any key phrase in events.all (≥3 Chinese characters / ≥3 words) by 3 or more, reject it.
+3) Forbidden terms (config-driven list of “too far-fetched, not discriminative” terms; currently active): {blacklist_terms}
+4) Prohibited unfalsifiable keywords (private behavior, mental states, etc. that cannot be recorded by public information sources): {unfalsifiable_terms}
+5) Descriptions must be verifiable in public sources (news/social media).
 
-数量与平衡（**生成时即需满足，不要靠后续 retry 修复**）：
-- 整体真假比在 0.7~1.5 之间（true:false）
-- 必须包含 D 类
-- A 类 easy 占比 ≤ 80%、hard 占比 ≥ 10%
-- **A 类窗口多样性硬约束**：所有 A 类题中任一 `window_days` 占比必须 ≤ 40%。
-  例如 50 道 A 类，每个 window_days（7/14/30/60/90）占比都不能超过 20 题。
-  请在生成时主动均衡分散，不要把所有 A 题都挂在同一窗口。
-- window_days 取 {{7, 14, 30, 60, 90}} 中之一
-- d_target 应分散在 [{cutoff}, {max_date}] 之间，近期题密度更高（4:2:1 倾向）
+Quantity and balance (**must be satisfied during generation; do not rely on later retries to fix them**):
+- Overall true:false ratio must be between 0.7 and 1.5
+- Must include D-category questions
+- A-category easy questions must be ≤80%; hard questions must be ≥10%
+- **Hard constraint on A-category window diversity**: For all A-category questions, no single `window_days` value may account for more than 40%.
+  For example, with 50 A-category questions, each `window_days` value (7/14/30/60/90) may account for no more than 20 questions.
+  Proactively balance the distribution when generating; do not assign all A questions to the same window.
+- `window_days` must be one of {{7, 14, 30, 60, 90}}
+- `d_target` should be distributed between [{cutoff}, {max_date}], with a higher density for recent questions (a 4:2:1 tendency)
 
-**输出**：严格 JSON 数组，每条字段：
-  q                (题目中文一句话，"事件 E 是否在窗口内发生？" 的泛化表述)
-  answer           (0 或 1)
+**Output**: Strict JSON array, with these fields for each item:
+  q                (one-sentence question in Chinese, generalized phrasing of “Will event E occur within the window?”)
+  answer           (0 or 1)
   difficulty       (easy / medium / hard)
-  dimension        (事件 / 舆论 / 政策 / 数字 等)
-  time_window      ("7天" / "14天" / "30天" / "60天" / "90天")
+  dimension        (event / public opinion / policy / numbers, etc.)
+  time_window      (“7 days” / “14 days” / “30 days” / “60 days” / “90 days”)
   d_target         (YYYY-MM-DD)
-  window_days      (整数)
-  days_from_cutoff (整数 = d_target - cutoff)
-  event_group      (字符串：关联 events.all 的 id；D 类用 "D_<n>")
+  window_days      (integer)
+  days_from_cutoff (integer = d_target - cutoff)
+  event_group      (string: associated ID from events.all; use "D_<n>" for D-category)
   question_type    (A_true / A_false / B_true / B_false / C_true / C_false / D_false)
 
-不要带 markdown 代码块、不要额外说明。
+Do not include a Markdown code block or any additional explanation.
 {retry_notes}"""
 
 
@@ -306,14 +302,14 @@ def llm_events(event_name: str, cutoff: str, gt_text: str, model: str) -> List[D
 
 
 DEFAULT_D_BLACKLIST_TERMS = (
-    "（例如：国家级最高机关、国家最高领导人、知名公众人物全名、明显离谱的"
-    "数字与比例如十亿/全球级总量/100%）——具体清单由 pipeline_config."
-    "predict_step2_questionbank.d_blacklist_terms 提供"
+    "(For example: the highest national authority, the country’s top leader, the full names of well-known public figures, and clearly outrageous)"
+    "Numbers and ratios such as billions, global-scale totals, or 100% — the specific list will be provided by `pipeline_config`."
+    "predict_step2_questionbank.d_blacklist_terms Provide"
 )
 DEFAULT_UNFALSIFIABLE_TERMS = (
-    "（例如：私下、内部、暗示、据传、知情人、匿名、心理状态、情绪、密谈、闭门、"
-    "秘密 — 这些事件即使发生也无法被公开信息源记录）——具体清单由 pipeline_config."
-    "predict_step2_questionbank.unfalsifiable_terms 提供"
+    "(e.g., privately, internally, insinuations, reportedly, insiders, anonymous, mental state, emotions, confidential talks, behind closed doors,"
+    "Confidential — these events cannot be recorded by public sources even if they occur) — the specific list is determined by pipeline_config."
+    "predict_step2_questionbank.unfalsifiable_terms Provide"
 )
 
 
@@ -399,23 +395,24 @@ def validate_questionbank(
 ) -> Dict[str, Any]:
     issues: List[str] = []
     if len(events_all) == 0:
-        issues.append("events.all 为空")
+        # 为空 --> empty
+        issues.append("events.all empty")
     if len(questions) != target_total_count:
-        issues.append(f"brier_questions 题量 {len(questions)} != target_total {target_total_count}")
+        issues.append(f"brier_questions Question count {len(questions)} != target_total {target_total_count}")
 
     true_q = sum(1 for q in questions if q.get("answer") == 1)
     false_q = sum(1 for q in questions if q.get("answer") == 0)
     ratio = false_q / true_q if true_q > 0 else 999.0
     if not (0.7 <= ratio <= 1.5):
-        issues.append(f"真假比例 {true_q}:{false_q}={ratio:.2f}，应在 0.7-1.5")
+        issues.append(f"True to false ratio {true_q}:{false_q}={ratio:.2f}，Should be 0.7-1.5")
 
     d_count = sum(1 for q in questions if str(q.get("question_type", "")).startswith("D_"))
     if d_count == 0:
-        issues.append("缺少 D 类高迷惑假题")
+        issues.append("Lack of Category D highly confusing fake questions")
 
     fake_texts = [q["q"] for q in questions if q.get("answer") == 0]
     if len(set(fake_texts)) < len(fake_texts):
-        issues.append(f"假题文本有 {len(fake_texts) - len(set(fake_texts))} 道重复")
+        issues.append(f"The text of the fake question is {len(fake_texts) - len(set(fake_texts))} Repeated path")
 
     a_qs = [q for q in questions if str(q.get("question_type", "")).startswith("A_")]
     if a_qs:
@@ -423,15 +420,15 @@ def validate_questionbank(
         easy = sum(1 for q in a_qs if q.get("difficulty") == "easy")
         hard = sum(1 for q in a_qs if q.get("difficulty") == "hard")
         if easy / n_a > 0.8:
-            issues.append(f"A 类 easy 占比 {easy/n_a:.2f} > 0.8")
+            issues.append(f"A class easy proportion {easy/n_a:.2f} > 0.8")
         if hard / n_a < 0.1:
-            issues.append(f"A 类 hard 占比 {hard/n_a:.2f} < 0.1")
+            issues.append(f"A class hard proportion {hard/n_a:.2f} < 0.1")
         wins: Dict[int, int] = {}
         for q in a_qs:
             wins[q.get("window_days", 0)] = wins.get(q.get("window_days", 0), 0) + 1
         max_share = max(wins.values()) / n_a if wins else 0
         if max_share > 0.4:
-            issues.append(f"A 类单一窗口占比 {max_share:.2f} > 0.4")
+            issues.append(f"A Class single-window proportion {max_share:.2f} > 0.4")
 
     return {
         "passed": len(issues) == 0,
@@ -445,10 +442,10 @@ def validate_questionbank(
 
 
 def parse_window_days(w: str) -> Optional[int]:
-    """Parse 'time_window' string like '7天'/'14天'/'30天'/'全时段X天' into int days."""
+    """Parse 'time_window' string like '7天'/'14天'/'30天'/'Full timeX天' into int days."""
     if not w:
         return None
-    if "全时段" in w:
+    if "Full time" in w:
         m = re.search(r"(\d+)", w)
         return int(m.group(1)) if m else 9999
     m = re.search(r"(\d+)", w)
@@ -589,7 +586,7 @@ def topup_d_class(
 ) -> int:
     """Ensure D-class share >= d_goal_pct (mirrors archive step2_3_topup_d.py).
     If short, ask LLM for extra D-class fakes, and drop the most-generic A/B/C
-    questions (preferring `time_window=全时段` ones) to make room. Keeps total
+    questions (preferring `time_window=Full time` ones) to make room. Keeps total
     brier_count unchanged. Returns net D additions.
     """
     n_total = len(brier_qs)
@@ -608,7 +605,7 @@ def topup_d_class(
         score = 0
         if qt.startswith(("A", "B", "C")):
             score += 1
-        if "全时段" in tw:
+        if "Full time" in tw:
             score += 2
         try:
             if int(parse_window_days(tw) or 0) >= 60:
@@ -626,7 +623,7 @@ def topup_d_class(
         return 0  # not enough room to make space cleanly
 
     extra = llm_brier(event_name, cutoff, events_all, need, model,
-                     retry_notes="\n请只生成 D 类高迷惑假题，不要 A/B/C/G。每条 question_type 必须是 D_false。",
+                     retry_notes="\nPlease only generate Category D highly confusing fake questions, not A/B/C/G.Each question_type must be D_false.",
                      qb_cfg=qb_cfg)
     extras_d = [q for q in extra if str(q.get("question_type", "")).startswith("D")][:need]
     if not extras_d:
@@ -643,17 +640,17 @@ def topup_d_class(
     return len(extras_d)
 
 
-SANITY_SAMPLE_PROMPT = """你是题库审核员。下面给你 {n} 道 brier 真题（answer=1）的题面。
-请判断：**仅看题面**，能否大致反推出 GT 原文细节（人名、机构名、具体引语、具体数字等）？
-泛化得好的题面应该只能让你猜到"某方做出了某种行动"，而不能让你猜中精确细节。
+SANITY_SAMPLE_PROMPT = """You are a question bank reviewer. Below are {n} Brier questions (answer=1).
+Please determine whether, based **only on the question wording**, one could roughly infer specific details from the GT source text (such as names, organizations, exact quotes, or specific numbers).
+A well-generalized question should only let you guess that “a party took some kind of action,” not the precise details.
 
-================ 抽样题面 ================
+================ Sample questions ================
 {qs_block}
 ================
 
-请按每题输出一个判断（不要 markdown 代码块）。严格 JSON 格式：
+Provide one judgment for each question (no Markdown code block). Strict JSON format:
 {{"items": [
-  {{"qid": <int>, "leaks_specifics": <true|false>, "reason": "<一句话>"}}
+  {{"qid": <int>, "leaks_specifics": <true|false>, "reason": "<one sentence>"}}
 ]}}
 """
 
@@ -817,7 +814,7 @@ def main() -> None:
             if validation["passed"]:
                 break
             retry_notes = (
-                f"\n上次返回有以下问题，请修正后重新返回完整 {n_target} 道题：\n"
+                f"\nThe previous submission contained the following issues; please correct them and resubmit the complete version.{n_target} Question：\n"
                 + "\n".join(f"- {it}" for it in validation["issues"])
             )
 
@@ -831,7 +828,7 @@ def main() -> None:
                 args.event_name, cutoff, events_all,
                 n_target - len(brier_qs), model,
                 qb_cfg=qb_cfg,
-                retry_notes="\n额外再生成 {n} 道补足总量，结构和先前一致。".format(
+                retry_notes="\nGenerate an additional {n} questions to reach the total, keeping the structure consistent with the previous ones.".format(
                     n=n_target - len(brier_qs)
                 ),
             )
