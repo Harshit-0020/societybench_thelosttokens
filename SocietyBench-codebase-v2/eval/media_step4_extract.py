@@ -20,20 +20,17 @@ from common import call_llm, load_pipeline_config, read_jsonl, write_progress
 
 
 PROMPT = """\
-This social media post was published on {date}. Below is a summary of it.
+这条社交媒体内容发布于 {date}。以下是它的摘要。
 
-Please assess: Does this content include any new developments around {date}\
-(a new court ruling, official notice, response, revelation, policy, or turning point in public opinion)?
+请判断：这条内容中有没有在 {date} 前后新发生的事情（新判决、新通报、新回应、新爆料、新政策、新的舆论转折点）？
 
-Rules:
-- If there are any new developments, state what has happened in 2–3 sentences; do not recap past events.
-- If the entire post merely reviews or summarizes past events,\
-or is purely an emotional outburst without factual information,\
-reply: No new developments
-- Do not use metatextual language such as "summary," "this post," or "this content."
-- Just write the event details directly.
+规则：
+- 如果有新进展，用 2-3 句话直接写出新发生了什么，不要回顾旧事
+- 如果整条只是在回顾/总结之前已经发生的旧事，或者只是纯情绪宣泄没有事实信息，回复：无新进展
+- 禁止出现"摘要""该帖子""这条内容"等元语言
+- 直接写事件内容
 
-Abstract: {summary}
+摘要：{summary}
 """
 
 WRITE_LOCK = threading.Lock()
@@ -86,8 +83,8 @@ def process_one(item: Dict[str, Any], event_name: str, model: str,
                 counter: Dict[str, int], total: int) -> None:
     date = (item.get("date") or "")[:10]
     summary = item.get("summary_clean") or item.get("summary") or ""
-    if summary.strip() in ("Irrelevant", "Cleaning failed", ""):
-        new_info = "No new developments"
+    if summary.strip() in ("不相关", "清洗失败", ""):
+        new_info = "无新进展"
     else:
         new_info = extract_new(date, summary, model)
     row = {
@@ -109,7 +106,7 @@ def process_one(item: Dict[str, Any], event_name: str, model: str,
         counter["done"] += 1
         done = counter["done"]
     pct = done / total * 100 if total else 0
-    status = "New" if ("No new developments" not in new_info and not new_info.startswith("[extract_error]")) else "Old"
+    status = "新" if ("无新进展" not in new_info and not new_info.startswith("[extract_error]")) else "旧"
     log(f"[{done}/{total}] ({pct:.1f}%) [{status}] {date} | {item.get('title','')[:40]}", log_path)
 
 
@@ -159,7 +156,7 @@ def main() -> None:
                     continue
                 row = json.loads(line)
                 ni = row.get("new_info", "")
-                if "No new developments" in ni or ni.startswith("[extract_error]"):
+                if "无新进展" in ni or ni.startswith("[extract_error]"):
                     old_count += 1
                 else:
                     new_count += 1

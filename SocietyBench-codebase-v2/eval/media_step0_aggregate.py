@@ -88,7 +88,7 @@ def aggregate(
             txt = (c.get("content") or "").strip()
             if not txt:
                 continue
-            top_comment_strs.append(f"Likes {c.get('liked_count', 0)}] {txt}")
+            top_comment_strs.append(f"[赞{c.get('liked_count', 0)}] {txt}")
         aggregated.append({
             "id": f"{post.get('platform','')}_{pid}",
             "platform": post.get("platform"),
@@ -182,24 +182,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-"""
-WORK DONE IN MEDIA PIPELINE:
-TODO: check meta languages present in the data scraped - media_step2_clean.py
-
-TRANSLATIONS MADE TO FLAGS:
-摘要生成失败 : Summary generation failed
-不相关 : Irrelevant
-清洗失败 : Cleaning failed
-无新进展 : No new developments
-假新进展 : Fake new developments
-提取失败 : Extraction failed
-未分阶段 : Unstaged
-社媒数据 : Social media data
-人工审核通过，可进入 predict : Human review approved, proceed to predict
-人工审核通过 : Human review approved
-
-
-Deduplication format - Keep: x,x,x
-
-"""

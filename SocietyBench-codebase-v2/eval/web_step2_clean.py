@@ -2,8 +2,8 @@
 """web-step2-clean (1:1 of skills/web-step2-clean/SKILL.md).
 
 Reads step1.jsonl, asks the LLM to rewrite each summary to remove meta-language
-("Summary"/"This article"/"The article" etc.) and web junk (By/Updated/nav bars/captions/Subscribe etc.),
-flagging irrelevant items as "Irrelevant".
+("摘要"/"本文"/"该文章" etc.) and web junk (By/Updated/nav bars/captions/Subscribe etc.),
+flagging irrelevant items as "不相关".
 
 Per the SKILL: 8 threads, resume via output JSONL on disk, per-row append,
 reasoning_effort="none".
@@ -22,21 +22,21 @@ from common import call_llm, load_pipeline_config, read_jsonl, write_progress
 
 
 PROMPT = """\
-Please rewrite the following text. Requirements:
-1. Describe the sequence of events directly, as if writing a news report
-2. Remove all metadiscursive language, such as "summary", "this paper", "the article", "this report", "news article", "the following is", "in summary", "it is worth noting", "it should be pointed out" and "the full text is approximately".
-3. Remove all web clutter / portal remnants, including but not limited to:
-   - Author's byline：By / Updated on / Read Full Bio / Skip to content / Section Navigation
-   - Subscription/Login Guide：Subscribe / Log in / Sign up / Continue reading
-   - Image label: Image credit / Figure caption / Caption / Photo by
-   - Website tagline：Site slogan, section names, broken nav links
-   - Information card fragments：View Details / Reading time / Key points / Ask AI / live ticker
-   - Multilingual mixed field：cookies notice, privacy policy prompt
-4. Delete all judgments such as "irrelevant to the event" and "cannot be determined"
-5. If the content is indeed Irrelevant to "{event}", just reply: Irrelevant
-6. Directly output the rewritten text, do not add any prefixes and suffixes
+请改写以下文字，要求：
+1. 直接叙述事件经过，像写新闻稿一样
+2. 删除所有"摘要""本文""该文章""这篇报道""新闻文章""以下是""总结如下""值得注意的是""需要指出""全文约"等元语言
+3. 删除所有网页垃圾 / 门户残片，包括但不限于：
+   - 作者署名行：By / Updated on / Read Full Bio / Skip to content / Section Navigation
+   - 订阅/登录引导：Subscribe / Log in / Sign up / Continue reading
+   - 图片标注：图片 credit / 图注 / Caption / Photo by
+   - 网站标语：站点 slogan、栏目名、broken nav links
+   - 资讯卡片残片：查看详情 / 阅读时间 / 要点 / 问AI / live ticker
+   - 多语 mixed 字段：cookies notice、privacy policy 提示
+4. 删除所有"与事件无关""无法判断"之类的判断性说明
+5. 如果内容确实跟「{event}」无关，只回复：不相关
+6. 直接输出改写后的文字，不要加任何前缀后缀
 
-Original text：
+原文：
 {summary}
 """
 
@@ -87,17 +87,17 @@ def clean_one(summary: str, event_name: str, model: str) -> str:
 
 def process_one(item: Dict[str, Any], event_name: str, model: str,
                 out_path: Path, log_path: Path, counter: Dict[str, int], total: int) -> None:
-    # SKILL §script: items already labelled "Irrelevant to the event / Summary generation failed / Irrelevant"
-    # pass through as "Irrelevant" without re-asking the LLM. SKILL output schema
+    # SKILL §script: items already labelled "与事件无关 / 摘要生成失败 / 不相关"
+    # pass through as "不相关" without re-asking the LLM. SKILL output schema
     # has no boolean `relevant` field — only the input-passthrough `relevance`
     # string and the (possibly rewritten) `summary`.
     summary = item.get("summary", "")
-    if summary.strip() in ("Irrelevant to the event", "Summary generation failed", "Irrelevant"):
-        cleaned = "Irrelevant"
+    if summary.strip() in ("与事件无关", "摘要生成失败", "不相关"):
+        cleaned = "不相关"
     else:
         cleaned = clean_one(summary, event_name, model)
         if cleaned.startswith("[clean_error]"):
-            cleaned = "Irrelevant"
+            cleaned = "不相关"
     row = {
         "id": item.get("id", ""),
         "url": item.get("url"),
@@ -162,7 +162,7 @@ def main() -> None:
                     log(f"thread error: {e}", log_path)
 
     final = load_existing(out_path)
-    irrelevant = sum(1 for r in final.values() if str(r.get("summary", "")).strip() == "Irrelevant")
+    irrelevant = sum(1 for r in final.values() if str(r.get("summary", "")).strip() == "不相关")
     # SKILL §progress.json: explicit status snapshot for audit
     try:
         _final_done = (sum(1 for _ in open(out_path, encoding="utf-8"))

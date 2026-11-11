@@ -93,7 +93,7 @@ def main() -> None:
           s6, [py, str(D / "web_step6_long.py"), str(s5), str(s1), str(out), *base])
 
     print("\n═══════════════════════════════════")
-    print(f"  Web Pipeline Done — {a.event_name}")
+    print(f"  Web Pipeline 完成 — {a.event_name}")
     print("═══════════════════════════════════")
     for label, path in (("step1", s1), ("step2", s2), ("step3", s3), ("step4", s4), ("short", s5), ("long", s6)):
         if path.exists():
