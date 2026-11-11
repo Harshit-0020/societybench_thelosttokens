@@ -2,7 +2,7 @@
 """SocietyBench experiment driver.
 
 This is an execution wrapper around the locked runbook in
-`runs_new/Experimental Plan.md`.  It intentionally keeps policy decisions here and
+`runs_new/实验方案.md`.  It intentionally keeps policy decisions here and
 leaves scoring logic in the existing step scripts.
 
 Default behavior is safe: without `--yes`, the driver only prints the plan.
@@ -46,7 +46,6 @@ EVENTS = [
     {"dir": "event3_tiktok", "slug": "tiktok", "aliases": {"event3", "event3_tiktok", "tiktok"}},
     {"dir": "event4_us_iran", "slug": "us_iran", "aliases": {"event4", "event4_us_iran", "us_iran"}},
     {"dir": "event5_smci", "slug": "smci", "aliases": {"event5", "event5_smci", "smci"}},
-    {"dir": "event6_NEET_Paper", "slug": "neet_paper", "aliases": {"event6", "event6_NEET_Paper", "neet_paper", "neet"}}
 ]
 
 
@@ -110,9 +109,9 @@ def resolve_events(raw: str) -> list[dict[str, object]]:
 def resolve_scope(raw: str, langs: list[str]) -> list[str]:
     if raw == "full":
         scope: list[str] = []
-        if "Chinese" in langs:
+        if "中文" in langs:
             scope.extend(["M1", "M4", "A1", "A2", "M3", "A4"])
-        if "English" in langs:
+        if "英文" in langs:
             scope.extend(["M2", "M4", "A1", "A2", "M3"])
         return list(dict.fromkeys(scope))
     return [x.upper() for x in split_csv(raw)]
@@ -167,7 +166,7 @@ def build_m1_tasks(
     max_parallel: int,
     brier_batch_size: int,
 ) -> list[Task]:
-    run_id_value = "M1" if lang == "Chinese" else "M2"
+    run_id_value = "M1" if lang == "中文" else "M2"
     tasks: list[Task] = []
     for event in events:
         ws = workspace(event, lang)
@@ -218,7 +217,7 @@ def brier_dirs(events: list[dict[str, object]], lang: str, run_id_value: str, mo
 
 
 def build_a1_tasks(events: list[dict[str, object]], lang: str, models: list[str]) -> list[Task]:
-    source_run = "M1" if lang == "Chinese" else "M2"
+    source_run = "M1" if lang == "中文" else "M2"
     tasks: list[Task] = []
     for model in models:
         out = RUNS_NEW / "_ablation" / lang / f"run_{source_run}" / "A1_qtype" / model_slug(model)
@@ -236,7 +235,7 @@ def build_a2_tasks(events: list[dict[str, object]], lang: str, models: list[str]
     if not ({DOUBAO, QWEN} <= set(models)):
         print("[warn] A2 skipped: requires Doubao-pro and Qwen3.5 in --models")
         return []
-    source_run = "M1" if lang == "Chinese" else "M2"
+    source_run = "M1" if lang == "中文" else "M2"
     out = RUNS_NEW / "_ablation" / lang / f"run_{source_run}" / "A2_scoring" / f"{model_slug(DOUBAO)}__vs__{model_slug(QWEN)}"
     return [Task(
         name=f"A2: scoring {lang} Doubao vs Qwen",
@@ -289,7 +288,7 @@ def build_a4_tasks(
     for event in events:
         ev = str(event["slug"])
         for variant in A4_VARIANTS:
-            ws = RUNS_NEW / str(event["dir"]) / "final" / "Anonymization ablation experiment" / variant
+            ws = RUNS_NEW / str(event["dir"]) / "final" / "匿名化消融实验" / variant
             rid = f"preflight_A4_{variant}" if preflight else f"A4_{variant}"
             tasks.append(Task(
                 name=f"A4: {variant} {event['dir']}",
@@ -315,8 +314,8 @@ def build_preflight_tasks(
 ) -> list[Task]:
     tasks = gate_tasks(events)
     for lang in langs:
-        if (lang == "Chinese" and "M1" in scopes) or (lang == "English" and "M2" in scopes):
-            run_id_value = "preflight_M1" if lang == "Chinese" else "preflight_M2"
+        if (lang == "中文" and "M1" in scopes) or (lang == "英文" and "M2" in scopes):
+            run_id_value = "preflight_M1" if lang == "中文" else "preflight_M2"
             for event in events:
                 ws = workspace(event, lang)
                 ev = str(event["slug"])
@@ -339,7 +338,7 @@ def build_preflight_tasks(
                 tasks.append(make_scorecard_task(ws, run_id_value, f"preflight {run_id_value}: scorecard {event['dir']} {lang}"))
         if "M3" in scopes:
             tasks.extend(build_m3_tasks(events, lang, points, preflight=True, brier_batch_size=brier_batch_size))
-    if "A4" in scopes and "Chinese" in langs:
+    if "A4" in scopes and "中文" in langs:
         tasks.extend(build_a4_tasks(events, points, max_parallel=1, preflight=True, brier_batch_size=brier_batch_size))
     return tasks
 
@@ -347,9 +346,9 @@ def build_preflight_tasks(
 def build_formal_tasks(events: list[dict[str, object]], scopes: list[str], langs: list[str], models: list[str], points: str, args: argparse.Namespace) -> list[Task]:
     tasks = gate_tasks(events)
     for lang in langs:
-        if lang == "Chinese" and "M1" in scopes:
+        if lang == "中文" and "M1" in scopes:
             tasks.extend(build_m1_tasks(events, lang, models, points, args.m1_max_parallel, args.brier_batch_size))
-        if lang == "English" and "M2" in scopes:
+        if lang == "英文" and "M2" in scopes:
             tasks.extend(build_m1_tasks(events, lang, models, points, args.m1_max_parallel, args.brier_batch_size))
         if "M4" in scopes:
             tasks.extend(build_m4_tasks(events, lang, points))
@@ -360,8 +359,8 @@ def build_formal_tasks(events: list[dict[str, object]], scopes: list[str], langs
         if "M3" in scopes:
             tasks.extend(build_m3_tasks(events, lang, points, brier_batch_size=args.brier_batch_size))
     if "A4" in scopes:
-        if "Chinese" not in langs:
-            print("[warn] A4 skipped: A4 variants exist only for Chinese workspaces")
+        if "中文" not in langs:
+            print("[warn] A4 skipped: A4 variants exist only for 中文 workspaces")
         else:
             tasks.extend(build_a4_tasks(events, points, args.a4_max_parallel, brier_batch_size=args.brier_batch_size))
     return tasks
@@ -414,7 +413,7 @@ def execute(tasks: list[Task], resume: bool, jobs: int = 1) -> None:
                 except Exception as e:  # noqa: BLE001
                     errors.append(str(e))
         if errors:
-            raise SystemExit("Some parallel API tasks failed:\n  " + "\n  ".join(errors))
+            raise SystemExit("并行 API 任务有失败:\n  " + "\n  ".join(errors))
     else:
         for i, t in rest_api:
             _run_one_task(t, i, resume)
@@ -426,7 +425,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="SocietyBench locked-run experiment driver")
     ap.add_argument("--models", default=",".join(CHINESE_MODELS), help="comma-separated model ids for M1/M2")
     ap.add_argument("--scope", default="M1,M4", help="comma-separated scope list or full")
-    ap.add_argument("--langs", default="Chinese", help="Chinese, English, or comma-separated")
+    ap.add_argument("--langs", default="中文", help="中文, 英文, or comma-separated")
     ap.add_argument("--events", default="all", help="all or comma-separated event aliases")
     ap.add_argument("--points", default="all", help="all or comma-separated point ids")
     ap.add_argument("--preflight-points", default="P01,P07")
@@ -452,7 +451,7 @@ def main() -> None:
 
     langs = split_csv(args.langs)
     for lang in langs:
-        if lang not in {"Chinese", "English"}:
+        if lang not in {"中文", "英文"}:
             raise SystemExit(f"Unknown lang: {lang}")
     events = resolve_events(args.events)
     scopes = resolve_scope(args.scope, langs)

@@ -29,19 +29,19 @@ from common import call_llm, load_pipeline_config, read_jsonl
 
 
 PROMPT = """\
-Please expand the following "short version" into a 200-300-character event description：
+请把下面这条"短版"扩写成 200-300 字的事件叙述：
 
-- Like a press release, the language is direct, including specific times, people, organizations, actions, and results
-- **Write only about new developments on that date**; do not revisit past events
-- Do not use metalinguistic terms such as "summary," "this article," or "this report".
-- **Information can only come from the given original summary**, never add any details based on memory or inference
-- If the original summary doesn’t contain enough information to reach 200 characters, keep it under 200 characters rather than making anything up.
+- 像新闻稿，语言直接，包含具体的时间、人物、机构、行为、结果
+- **只写该日期的新进展**，不回顾旧事
+- 禁止出现"摘要""本文""该报道"等元语言
+- **信息只能来自给定的原始摘要**，绝不凭记忆或推断补充任何细节
+- 如果原始摘要不足以撑起 200 字，宁可少于 200 字也不要编造
 
-Please output only the expanded English paragraph; do not include any additional explanations.
+只输出扩写后的中文段落，不要任何额外说明。
 
-Key points of the short version: {short}
+短版要点：{short}
 
-Original Summary：
+原始摘要：
 {src}
 """
 
@@ -124,8 +124,8 @@ def main() -> None:
         item["expanded"] = expand_one(item["short"], src_summary, model)
         with DONE_LOCK:
             counter["done"] += 1
-        miss_tag = " [Source missing]" if item["src_missing"] else (
-            " [Some sources are missing]" if item["partial_src"] else ""
+        miss_tag = " [来源缺失]" if item["src_missing"] else (
+            " [部分来源缺失]" if item["partial_src"] else ""
         )
         log(f"[{counter['done']}/{len(items)}] line={item['line_no']} ids={item['ids']}{miss_tag}",
             log_path)
@@ -151,9 +151,9 @@ def main() -> None:
             text = it["expanded"] or it["short"]
             # SKILL: "ID not found → keep original text (tag as source-missing)"
             if it.get("src_missing"):
-                text = f"{text} ⚠️[Source missing]"
+                text = f"{text} ⚠️[来源缺失]"
             elif it.get("partial_src"):
-                text = f"{text} ⚠️[Some sources are missing]"
+                text = f"{text} ⚠️[部分来源缺失]"
             out_lines.append(f"- {text}")
         else:
             out_lines.append(line)

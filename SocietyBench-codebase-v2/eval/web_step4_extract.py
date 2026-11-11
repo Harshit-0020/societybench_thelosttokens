@@ -6,7 +6,7 @@ progress** around its publication date. Tag `new_info` accordingly. This step
 does NOT filter — filtering happens in step5.
 
 Per the SKILL: 8 threads, resume by id, reasoning_effort="none", real-time
-log marks each row as [New] or [Old].
+log marks each row as [新] or [旧].
 """
 from __future__ import annotations
 
@@ -22,17 +22,17 @@ from common import call_llm, load_pipeline_config, read_jsonl, write_progress
 
 
 PROMPT = """\
-This article was published on {date}. The following is a summary of its content.
+这篇报道发布于 {date}。以下是它的内容摘要。
 
-Please determine: Does this report contain any **new developments around {date}** (new rulings, new announcements, new responses, new revelations, new developments)?
+请你判断：这篇报道中有没有**在 {date} 前后新发生的事情**（新判决、新通报、新回应、新爆料、新进展）？
 
-Rules:
-- If there are any new developments, describe them directly in 2–3 sentences; do not revisit past events.
-- If the entire piece is just reviewing or summarizing past events, reply : No new developments
-- Do not use metalinguistic expressions such as "summary," "this text," or "this report."
-- Write the event content directly
+规则：
+- 如果有新进展，用 2-3 句话直接写出新进展是什么，不要回顾旧事
+- 如果整篇只是在回顾/总结之前已经发生的旧事，回复：无新进展
+- 禁止出现"摘要""本文""该报道"等元语言
+- 直接写事件内容
 
-Summary:
+摘要内容：
 {summary}
 """
 
@@ -89,8 +89,8 @@ def process_one(
 ) -> None:
     date = (item.get("date") or "")[:10]
     summary = item.get("summary", "")
-    if summary.strip() in ("Irrelevant to the event", "Summary generation failed", "Irrelevant", ""):
-        new_info = "No new developments"
+    if summary.strip() in ("与事件无关", "摘要生成失败", "不相关", ""):
+        new_info = "无新进展"
     else:
         new_info = extract_new(date, summary, model)
     # SKILL output schema: only {id, url, title, date, new_info} — `summary` is
@@ -108,7 +108,7 @@ def process_one(
     with DONE_LOCK:
         counter["done"] += 1
         done = counter["done"]
-    status = "New" if ("No new developments" not in new_info and not new_info.startswith("[extract_error]")) else "Old"
+    status = "新" if ("无新进展" not in new_info and not new_info.startswith("[extract_error]")) else "旧"
     pct = done / total * 100 if total else 0
     log(f"[{done}/{total}] ({pct:.1f}%) [{status}] {date} | {item.get('title','')[:40]}", log_path)
 
@@ -166,7 +166,7 @@ def main() -> None:
                     continue
                 row = json.loads(line)
                 ni = row.get("new_info", "")
-                if "No new developments" in ni or ni.startswith("[extract_error]"):
+                if "无新进展" in ni or ni.startswith("[extract_error]"):
                     old_count += 1
                 else:
                     new_count += 1
